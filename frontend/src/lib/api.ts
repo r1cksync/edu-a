@@ -188,8 +188,8 @@ class ApiClient {
   }
 
   async gradeSubmission(submissionId: string, data: any) {
-    return this.request(`/submissions/${submissionId}/grade`, {
-      method: 'POST',
+    return this.request(`/assignments/submissions/${submissionId}/grade`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     })
   }

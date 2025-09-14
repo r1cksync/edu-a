@@ -612,9 +612,9 @@ export default function ClassroomAssignments({ classroomId, isTeacher }: Classro
                   </div>
                   <div className="flex space-x-2">
                     {isTeacher ? (
-                      <Link href={`/dashboard/assignments/${assignment._id}/grade`}>
+                      <Link href={`/dashboard/assignments/${assignment._id}`}>
                         <Button variant="outline" size="sm">
-                          Grade Submissions
+                          {assignment.type === 'mcq' ? 'View Results' : 'View & Grade'}
                         </Button>
                       </Link>
                     ) : (

@@ -471,7 +471,9 @@ class AssignmentController {
           id: assignment._id,
           title: assignment.title,
           type: assignment.type,
-          totalPoints: assignment.totalPoints
+          totalPoints: assignment.totalPoints,
+          questions: assignment.questions, // Include questions for MCQ display
+          attachments: assignment.attachments // Include attachments if any
         }
       });
     } catch (error) {
