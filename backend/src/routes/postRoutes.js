@@ -4,6 +4,9 @@ const postController = require('../controllers/postController');
 const { auth, requireTeacher } = require('../middleware/auth');
 const { validateRequest, schemas } = require('../middleware/validation');
 
+// Global routes
+router.get('/', auth, postController.getAllPosts);
+
 // Post routes
 router.post('/classroom/:classroomId', auth, validateRequest(schemas.createPost), postController.createPost);
 router.get('/classroom/:classroomId', auth, postController.getClassroomPosts);

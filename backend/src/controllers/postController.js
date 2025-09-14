@@ -3,6 +3,51 @@ const Comment = require('../models/Comment');
 const Classroom = require('../models/Classroom');
 
 class PostController {
+  // Get all posts for current user (all classrooms)
+  async getAllPosts(req, res) {
+    try {
+      const userId = req.user._id;
+      const userRole = req.user.role;
+
+      // Get all classrooms user has access to
+      let classrooms;
+      if (userRole === 'teacher') {
+        classrooms = await Classroom.find({ teacher: userId, isActive: true });
+      } else {
+        classrooms = await Classroom.find({ 
+          'students.student': userId, 
+          isActive: true 
+        });
+      }
+
+      const classroomIds = classrooms.map(c => c._id);
+
+      // Get all posts from these classrooms
+      const posts = await Post.find({ 
+        classroom: { $in: classroomIds },
+        isActive: true 
+      })
+        .populate('author', 'name email role')
+        .populate('classroom', 'name classCode')
+        .populate({
+          path: 'comments',
+          populate: {
+            path: 'author',
+            select: 'name email role'
+          }
+        })
+        .sort({ isPinned: -1, createdAt: -1 });
+
+      res.json({
+        posts,
+        total: posts.length
+      });
+    } catch (error) {
+      console.error('Get all posts error:', error);
+      res.status(500).json({ message: 'Server error while fetching posts' });
+    }
+  }
+
   // Create new post
   async createPost(req, res) {
     try {

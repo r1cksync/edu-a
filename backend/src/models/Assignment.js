@@ -25,7 +25,7 @@ const assignmentSchema = new mongoose.Schema({
   // Assignment settings
   type: {
     type: String,
-    enum: ['assignment', 'quiz', 'test'],
+    enum: ['assignment', 'quiz', 'test', 'mcq', 'file'],
     default: 'assignment'
   },
   totalPoints: {
@@ -49,8 +49,10 @@ const assignmentSchema = new mongoose.Schema({
   attachments: [{
     fileName: String,
     fileUrl: String,
+    fileKey: String, // S3 key or local file path for file management
     fileSize: Number,
     fileType: String,
+    mimeType: String, // Added for better file type handling
     uploadedAt: {
       type: Date,
       default: Date.now

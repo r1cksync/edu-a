@@ -63,7 +63,7 @@ const schemas = {
   createAssignment: Joi.object({
     title: Joi.string().min(1).max(200).required(),
     description: Joi.string().required(),
-    type: Joi.string().valid('assignment', 'quiz', 'test').optional(),
+    type: Joi.string().valid('assignment', 'quiz', 'test', 'mcq', 'file').optional(),
     totalPoints: Joi.number().min(1).optional(),
     dueDate: Joi.date().required(),
     allowLateSubmission: Joi.boolean().optional(),

@@ -21,6 +21,7 @@ const submissionSchema = new mongoose.Schema({
     fileUrl: String,
     fileSize: Number,
     fileType: String,
+    fileKey: String, // S3 key for file management
     uploadedAt: {
       type: Date,
       default: Date.now

@@ -8,7 +8,6 @@ const { validateRequest, schemas } = require('../middleware/validation');
 router.post('/', auth, requireTeacher, validateRequest(schemas.createClassroom), classroomController.createClassroom);
 router.put('/:classroomId', auth, requireTeacher, classroomController.updateClassroom);
 router.delete('/:classroomId/students/:studentId', auth, requireTeacher, classroomController.removeStudent);
-router.get('/:classroomId/students', auth, requireTeacher, classroomController.getClassroomStudents);
 router.put('/:classroomId/archive', auth, requireTeacher, classroomController.archiveClassroom);
 router.put('/:classroomId/students/:studentId/level', auth, requireTeacher, classroomController.updateStudentLevel);
 
@@ -19,5 +18,6 @@ router.delete('/:classroomId/leave', auth, requireStudent, classroomController.l
 // Common routes (both teachers and students)
 router.get('/', auth, classroomController.getClassrooms);
 router.get('/:classroomId', auth, classroomController.getClassroom);
+router.get('/:classroomId/students', auth, classroomController.getClassroomStudents);
 
 module.exports = router;

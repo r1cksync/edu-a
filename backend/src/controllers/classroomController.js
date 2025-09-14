@@ -244,10 +244,22 @@ class ClassroomController {
   async getClassroomStudents(req, res) {
     try {
       const { classroomId } = req.params;
-      const teacherId = req.user._id;
+      const userId = req.user._id;
+      const userRole = req.user.role;
 
-      const classroom = await Classroom.findOne({ _id: classroomId, teacher: teacherId })
-        .populate('students.student', 'name email studentId profilePicture');
+      let classroom;
+
+      if (userRole === 'teacher') {
+        // Teachers can see students in their classrooms
+        classroom = await Classroom.findOne({ _id: classroomId, teacher: userId })
+          .populate('students.student', 'name email studentId profilePicture');
+      } else {
+        // Students can see students in classrooms they're enrolled in
+        classroom = await Classroom.findOne({ 
+          _id: classroomId,
+          'students.student': userId
+        }).populate('students.student', 'name email studentId profilePicture');
+      }
 
       if (!classroom) {
         return res.status(404).json({ message: 'Classroom not found or access denied' });
