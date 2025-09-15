@@ -25,18 +25,21 @@ export default function PostsPage() {
   const { user } = useAuthStore()
   const [searchTerm, setSearchTerm] = useState('')
 
-  const { data: posts, isLoading } = useQuery({
+  // Fetch all posts for the logged-in user
+  const { data: postsData = {}, isLoading } = useQuery({
     queryKey: ['posts'],
     queryFn: () => apiClient.getPosts(),
   })
 
   // Handle backend response structure: { posts: [], total: number }
-  const postsList = Array.isArray(posts) ? posts : (posts as any)?.posts || []
+  const postsList = Array.isArray(postsData) ? postsData : (postsData as any)?.posts || []
   
-  const filteredPosts = postsList.filter((post: any) =>
-    post.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    post.classroom?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // Filter by search term only if search term exists
+  const filteredPosts = searchTerm 
+    ? postsList.filter((post: any) =>
+        post.content?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : postsList
 
   const getPostsByType = () => {
     const announcements = filteredPosts.filter((post: any) => post.type === 'announcement')

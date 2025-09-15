@@ -297,6 +297,42 @@ class ApiClient {
     })
   }
 
+  async createPostWithAttachments(data: any, files: File[]) {
+    const { classroom, ...postData } = data
+    const formData = new FormData()
+    
+    // Add text fields
+    Object.keys(postData).forEach(key => {
+      if (postData[key] !== undefined && postData[key] !== null) {
+        formData.append(key, postData[key])
+      }
+    })
+    
+    // Add files
+    files.forEach(file => {
+      formData.append('attachments', file)
+    })
+    
+    const { token } = useAuthStore.getState()
+    
+    const url = `${this.baseUrl}/posts/classroom/${classroom}/with-attachments`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
+    }
+
+    return await response.json()
+  }
+
   async updatePost(id: string, data: any) {
     return this.request(`/posts/${id}`, {
       method: 'PUT',
@@ -320,6 +356,27 @@ class ApiClient {
     return this.request(`/posts/${id}/unlike`, {
       method: 'POST',
     })
+  }
+
+  async downloadPostAttachment(postId: string, attachmentId: string) {
+    const { token } = useAuthStore.getState()
+    
+    if (!token) {
+      throw new Error('Authentication required')
+    }
+    
+    // Create download URL with token as query parameter
+    const downloadUrl = `${this.baseUrl}/posts/${postId}/attachments/${attachmentId}/download?token=${encodeURIComponent(token)}`
+    
+    try {
+      // Open the download URL directly in a new window
+      // This bypasses CORS issues since we're not using fetch()
+      window.open(downloadUrl, '_blank')
+      
+    } catch (error) {
+      console.error('Download error:', error)
+      throw error
+    }
   }
 
   async getComments(postId: string) {
@@ -370,6 +427,106 @@ class ApiClient {
     }
 
     return await response.json()
+  }
+
+  // Video Class endpoints
+  async scheduleVideoClass(classData: {
+    classroomId: string
+    title: string
+    description?: string
+    scheduledStartTime: string
+    scheduledEndTime: string
+    type?: 'scheduled' | 'instant'
+    allowLateJoin?: boolean
+    maxDuration?: number
+    isRecorded?: boolean
+  }) {
+    return this.request('/video-classes/schedule', {
+      method: 'POST',
+      body: JSON.stringify(classData),
+    })
+  }
+
+  async startInstantClass(classData: {
+    classroomId: string
+    title?: string
+    description?: string
+    maxDuration?: number
+  }) {
+    return this.request('/video-classes/instant', {
+      method: 'POST',
+      body: JSON.stringify(classData),
+    })
+  }
+
+  async startVideoClass(classId: string) {
+    return this.request(`/video-classes/${classId}/start`, {
+      method: 'PUT',
+    })
+  }
+
+  async endVideoClass(classId: string) {
+    return this.request(`/video-classes/${classId}/end`, {
+      method: 'PUT',
+    })
+  }
+
+  async joinVideoClass(classId: string) {
+    return this.request(`/video-classes/${classId}/join`, {
+      method: 'POST',
+    })
+  }
+
+  async leaveVideoClass(classId: string) {
+    return this.request(`/video-classes/${classId}/leave`, {
+      method: 'PUT',
+    })
+  }
+
+  async getClassroomVideoClasses(classroomId: string, params?: {
+    status?: string
+    limit?: number
+    page?: number
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.status) queryParams.append('status', params.status)
+    if (params?.limit) queryParams.append('limit', params.limit.toString())
+    if (params?.page) queryParams.append('page', params.page.toString())
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request(`/video-classes/classroom/${classroomId}${query}`)
+  }
+
+  async getUpcomingVideoClasses(classroomId: string) {
+    return this.request(`/video-classes/classroom/${classroomId}/upcoming`)
+  }
+
+  async getLiveVideoClasses(classroomId: string) {
+    return this.request(`/video-classes/classroom/${classroomId}/live`)
+  }
+
+  async getVideoClass(classId: string) {
+    return this.request(`/video-classes/${classId}`)
+  }
+
+  async updateVideoClass(classId: string, updates: {
+    title?: string
+    description?: string
+    scheduledStartTime?: string
+    scheduledEndTime?: string
+    allowLateJoin?: boolean
+    isRecorded?: boolean
+  }) {
+    return this.request(`/video-classes/${classId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    })
+  }
+
+  async deleteVideoClass(classId: string) {
+    return this.request(`/video-classes/${classId}`, {
+      method: 'DELETE',
+    })
   }
 }
 

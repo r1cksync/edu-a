@@ -36,6 +36,28 @@ const localStorage = multer.diskStorage({
   }
 });
 
+// Local storage configuration for post attachments
+const postLocalStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const fs = require('fs');
+    const path = require('path');
+    const uploadDir = 'uploads/post-attachments/';
+    
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const teacherId = req.user._id;
+    const timestamp = Date.now();
+    const fileName = `${teacherId}-${timestamp}-${file.originalname}`;
+    cb(null, fileName);
+  }
+});
+
 // Multer S3 configuration for assignment files (with fallback)
 const assignmentUpload = multer({
   storage: hasAWSConfig ? multerS3({
@@ -169,9 +191,43 @@ const teacherAttachmentUpload = multer({
   }
 });
 
+// Function to upload post attachments (for material posts)
+const postAttachmentUpload = multer({
+  storage: hasAWSConfig ? multerS3({
+    s3: s3,
+    bucket: process.env.S3_BUCKET_NAME,
+    key: function (req, file, cb) {
+      const teacherId = req.user._id;
+      const timestamp = Date.now();
+      const fileName = `post-attachments/${teacherId}/${timestamp}-${file.originalname}`;
+      cb(null, fileName);
+    },
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    metadata: function (req, file, cb) {
+      cb(null, {
+        fieldName: file.fieldname,
+        uploadedBy: req.user._id.toString(),
+        type: 'post-attachment'
+      });
+    }
+  }) : postLocalStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit for post attachments
+  },
+  fileFilter: function (req, file, cb) {
+    // Allow PDF and image files for post attachments
+    if (file.mimetype.startsWith('application/pdf') || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and image files are allowed!'), false);
+    }
+  }
+});
+
 module.exports = {
   assignmentUpload,
   teacherAttachmentUpload,
+  postAttachmentUpload,
   deleteFileFromS3,
   getSignedUrl,
   s3: hasAWSConfig ? s3 : null,

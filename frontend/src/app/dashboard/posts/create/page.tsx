@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
@@ -32,14 +32,30 @@ export default function CreatePostPage() {
   const [classroomId, setClassroomId] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null)
 
+  // Clear selected files when type changes away from 'material'
+  useEffect(() => {
+    if (type !== 'material') {
+      setSelectedFiles(null)
+    }
+  }, [type])
+
   // Get user's classrooms for selection
-  const { data: classrooms } = useQuery({
+  const { data: classrooms, isLoading: classroomsLoading, error: classroomsError } = useQuery({
     queryKey: ['classrooms', 'owned'],
     queryFn: () => apiClient.getClassrooms(),
   })
 
   const createPostMutation = useMutation({
     mutationFn: (data: any) => apiClient.createPost(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts'] })
+      router.push('/dashboard/posts')
+    },
+  })
+
+  const createPostWithAttachmentsMutation = useMutation({
+    mutationFn: ({ data, files }: { data: any; files: File[] }) => 
+      apiClient.createPostWithAttachments(data, files),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] })
       router.push('/dashboard/posts')
@@ -73,7 +89,16 @@ export default function CreatePostPage() {
       classroom: classroomId,
     }
 
-    createPostMutation.mutate(postData)
+    // Check if there are files to upload and if the post type is material
+    if (type === 'material' && selectedFiles && selectedFiles.length > 0) {
+      const filesArray = Array.from(selectedFiles)
+      createPostWithAttachmentsMutation.mutate({ 
+        data: postData, 
+        files: filesArray 
+      })
+    } else {
+      createPostMutation.mutate(postData)
+    }
   }
 
   const getTypeIcon = (postType: string) => {
@@ -145,16 +170,30 @@ export default function CreatePostPage() {
                 <Label htmlFor="classroom">Classroom</Label>
                 <Select value={classroomId} onValueChange={setClassroomId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a classroom" />
+                    <SelectValue placeholder={classroomsLoading ? "Loading classrooms..." : "Select a classroom"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.isArray(classrooms) && classrooms.map((classroom: any) => (
-                      <SelectItem key={classroom._id} value={classroom._id}>
-                        {classroom.name}
-                      </SelectItem>
-                    ))}
+                    {classroomsLoading ? (
+                      <SelectItem value="" disabled>Loading...</SelectItem>
+                    ) : classroomsError ? (
+                      <SelectItem value="" disabled>Error loading classrooms</SelectItem>
+                    ) : !classrooms || (!Array.isArray(classrooms) && !(classrooms as any)?.classrooms?.length) ? (
+                      <SelectItem value="" disabled>No classrooms available</SelectItem>
+                    ) : (
+                      <>
+                        {/* Handle both direct array and nested data structure */}
+                        {(Array.isArray(classrooms) ? classrooms : (classrooms as any)?.classrooms || []).map((classroom: any) => (
+                          <SelectItem key={classroom._id} value={classroom._id}>
+                            {classroom.name} ({classroom.classCode})
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
+                {classroomsError && (
+                  <p className="text-sm text-red-600">Failed to load classrooms</p>
+                )}
               </div>
 
               {/* Content */}
@@ -173,31 +212,34 @@ export default function CreatePostPage() {
                 </p>
               </div>
 
-              {/* File Attachments */}
-              <div className="space-y-2">
-                <Label htmlFor="attachments">Attachments (optional)</Label>
-                <Input
-                  id="attachments"
-                  type="file"
-                  multiple
-                  onChange={(e) => setSelectedFiles(e.target.files)}
-                  className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {selectedFiles && selectedFiles.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-600">Selected files:</p>
-                    <div className="space-y-1">
-                      {Array.from(selectedFiles).map((file, index) => (
-                        <div key={index} className="flex items-center space-x-2 text-sm bg-gray-50 p-2 rounded">
-                          <FileText className="h-4 w-4 text-gray-500" />
-                          <span>{file.name}</span>
-                          <span className="text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
-                        </div>
-                      ))}
+              {/* File Attachments - Only show for material posts */}
+              {type === 'material' && (
+                <div className="space-y-2">
+                  <Label htmlFor="attachments">Attachments (PDF, JPEG)</Label>
+                  <Input
+                    id="attachments"
+                    type="file"
+                    multiple
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => setSelectedFiles(e.target.files)}
+                    className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+                  {selectedFiles && selectedFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-600">Selected files:</p>
+                      <div className="space-y-1">
+                        {Array.from(selectedFiles).map((file, index) => (
+                          <div key={index} className="flex items-center space-x-2 text-sm bg-gray-50 p-2 rounded">
+                            <FileText className="h-4 w-4 text-gray-500" />
+                            <span>{file.name}</span>
+                            <span className="text-gray-500">({(file.size / 1024).toFixed(1)} KB)</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -226,7 +268,7 @@ export default function CreatePostPage() {
                     </span>
                   </div>
                   <p className="text-gray-700 whitespace-pre-wrap">{content}</p>
-                  {selectedFiles && selectedFiles.length > 0 && (
+                  {type === 'material' && selectedFiles && selectedFiles.length > 0 && (
                     <div className="mt-3 pt-3 border-t">
                       <p className="text-sm font-medium text-gray-600 mb-2">Attachments:</p>
                       <div className="space-y-1">
@@ -251,9 +293,9 @@ export default function CreatePostPage() {
             </Link>
             <Button 
               type="submit" 
-              disabled={!content.trim() || !classroomId || createPostMutation.isPending}
+              disabled={!content.trim() || !classroomId || createPostMutation.isPending || createPostWithAttachmentsMutation.isPending}
             >
-              {createPostMutation.isPending ? 'Creating...' : 'Create Post'}
+              {(createPostMutation.isPending || createPostWithAttachmentsMutation.isPending) ? 'Creating...' : 'Create Post'}
             </Button>
           </div>
         </form>

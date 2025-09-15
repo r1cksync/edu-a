@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth'
 import { apiClient } from '@/lib/api'
@@ -20,7 +20,10 @@ import {
   MoreVertical,
   Edit,
   Trash2,
-  User
+  User,
+  FileText,
+  Upload,
+  X
 } from 'lucide-react'
 
 interface ClassroomPostsProps {
@@ -37,14 +40,19 @@ export default function ClassroomPosts({ classroomId, isTeacher }: ClassroomPost
     content: '',
     type: 'announcement' as 'announcement' | 'material',
   })
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null)
+
+  // Clear selected files when type changes away from 'material'
+  useEffect(() => {
+    if (newPost.type !== 'material') {
+      setSelectedFiles(null)
+    }
+  }, [newPost.type])
 
   const { data: posts, isLoading } = useQuery({
     queryKey: ['posts', classroomId],
     queryFn: () => apiClient.getPosts(classroomId),
   })
-
-  // Debug: Log the posts data
-  console.log('Posts data:', posts)
 
   // Handle backend response structure: { posts: [], pagination: {} }
   const postsList = Array.isArray(posts) ? posts : (posts as any)?.posts || []
@@ -59,6 +67,22 @@ export default function ClassroomPosts({ classroomId, isTeacher }: ClassroomPost
       queryClient.invalidateQueries({ queryKey: ['posts', classroomId] })
       setIsCreateDialogOpen(false)
       setNewPost({ title: '', content: '', type: 'announcement' })
+      setSelectedFiles(null)
+    },
+  })
+
+  const createPostWithAttachmentsMutation = useMutation({
+    mutationFn: ({ data, files }: { data: typeof newPost & { classroom: string }; files: File[] }) => 
+      apiClient.createPostWithAttachments(data, files),
+    onSuccess: () => {
+      toast({
+        title: 'Post created with attachments!',
+        description: 'Your post has been shared with the class.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['posts', classroomId] })
+      setIsCreateDialogOpen(false)
+      setNewPost({ title: '', content: '', type: 'announcement' })
+      setSelectedFiles(null)
     },
   })
 
@@ -78,7 +102,19 @@ export default function ClassroomPosts({ classroomId, isTeacher }: ClassroomPost
       })
       return
     }
-    createPostMutation.mutate({ ...newPost, classroom: classroomId })
+
+    const postData = { ...newPost, classroom: classroomId }
+
+    // Check if there are files to upload and if the post type is material
+    if (newPost.type === 'material' && selectedFiles && selectedFiles.length > 0) {
+      const filesArray = Array.from(selectedFiles)
+      createPostWithAttachmentsMutation.mutate({ 
+        data: postData, 
+        files: filesArray 
+      })
+    } else {
+      createPostMutation.mutate(postData)
+    }
   }
 
   if (isLoading) {
@@ -146,12 +182,68 @@ export default function ClassroomPosts({ classroomId, isTeacher }: ClassroomPost
                   className="mt-1"
                 />
               </div>
+
+              {/* File Upload for Material Posts */}
+              {newPost.type === 'material' && (
+                <div>
+                  <label className="text-sm font-medium">Attachments</label>
+                  <div className="mt-1 space-y-3">
+                    <div className="flex items-center justify-center w-full">
+                      <label htmlFor="file-upload-classroom" className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <Upload className="w-8 h-8 mb-4 text-gray-500" />
+                          <p className="mb-2 text-sm text-gray-500">
+                            <span className="font-semibold">Click to upload</span> or drag and drop
+                          </p>
+                          <p className="text-xs text-gray-500">PDF or images (MAX. 50MB)</p>
+                        </div>
+                        <input
+                          id="file-upload-classroom"
+                          type="file"
+                          multiple
+                          accept=".pdf,.jpg,.jpeg,.png,.gif"
+                          className="hidden"
+                          onChange={(e) => setSelectedFiles(e.target.files)}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Selected Files Preview */}
+                    {selectedFiles && selectedFiles.length > 0 && (
+                      <div className="border rounded-lg p-3 bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">Selected Files ({selectedFiles.length})</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedFiles(null)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          {Array.from(selectedFiles).map((file, index) => (
+                            <div key={index} className="flex items-center space-x-2 text-sm">
+                              <FileText className="h-4 w-4 text-gray-500" />
+                              <span>{file.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleCreatePost} disabled={createPostMutation.isPending}>
-                  {createPostMutation.isPending ? 'Creating...' : 'Create Post'}
+                <Button 
+                  onClick={handleCreatePost} 
+                  disabled={createPostMutation.isPending || createPostWithAttachmentsMutation.isPending}
+                >
+                  {(createPostMutation.isPending || createPostWithAttachmentsMutation.isPending) ? 'Creating...' : 'Create Post'}
                 </Button>
               </div>
             </div>

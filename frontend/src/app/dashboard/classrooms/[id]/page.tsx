@@ -20,13 +20,16 @@ import {
   Plus,
   Copy,
   Calendar,
-  BookOpen
+  BookOpen,
+  Video
 } from 'lucide-react'
 import Link from 'next/link'
 import ClassroomPosts from '@/components/classroom/posts'
 import ClassroomAssignments from '@/components/classroom/assignments'
 import ClassroomStudents from '@/components/classroom/students'
 import ClassroomSettings from '@/components/classroom/settings'
+import TeacherVideoClasses from '@/components/video-classes/teacher-video-classes'
+import StudentVideoClasses from '@/components/video-classes/student-video-classes'
 
 export default function ClassroomPage() {
   const params = useParams()
@@ -176,7 +179,7 @@ export default function ClassroomPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className={`grid w-full ${isOwner ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <TabsTrigger value="posts" className="flex items-center space-x-2">
               <MessageSquare className="h-4 w-4" />
               <span>Posts</span>
@@ -184,6 +187,10 @@ export default function ClassroomPage() {
             <TabsTrigger value="assignments" className="flex items-center space-x-2">
               <FileText className="h-4 w-4" />
               <span>Assignments</span>
+            </TabsTrigger>
+            <TabsTrigger value="video-classes" className="flex items-center space-x-2">
+              <Video className="h-4 w-4" />
+              <span>Video Classes</span>
             </TabsTrigger>
             <TabsTrigger value="students" className="flex items-center space-x-2">
               <Users className="h-4 w-4" />
@@ -203,6 +210,14 @@ export default function ClassroomPage() {
 
           <TabsContent value="assignments" className="space-y-6">
             <ClassroomAssignments classroomId={classroomId} isTeacher={isTeacher} />
+          </TabsContent>
+
+          <TabsContent value="video-classes" className="space-y-6">
+            {isTeacher ? (
+              <TeacherVideoClasses classroomId={classroomId} />
+            ) : (
+              <StudentVideoClasses classroomId={classroomId} />
+            )}
           </TabsContent>
 
           <TabsContent value="students" className="space-y-6">

@@ -8,6 +8,7 @@ const classroomRoutes = require('./routes/classroomRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const postRoutes = require('./routes/postRoutes');
 const userRoutes = require('./routes/userRoutes');
+const videoClassRoutes = require('./routes/videoClassRoutes');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -44,6 +45,7 @@ app.use('/api/classrooms', classroomRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/video-classes', videoClassRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

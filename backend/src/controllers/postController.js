@@ -25,7 +25,7 @@ class PostController {
       // Get all posts from these classrooms
       const posts = await Post.find({ 
         classroom: { $in: classroomIds },
-        isActive: true 
+        isDeleted: false 
       })
         .populate('author', 'name email role')
         .populate('classroom', 'name classCode')
@@ -108,6 +108,83 @@ class PostController {
     } catch (error) {
       console.error('Create post error:', error);
       res.status(500).json({ message: 'Server error while creating post' });
+    }
+  }
+
+  // Create post with file attachments
+  async createPostWithAttachments(req, res) {
+    try {
+      const { classroomId } = req.params;
+      const {
+        type, title, content, allowComments,
+        visibility, targetLevels, relatedAssignment
+      } = req.body;
+      
+      const authorId = req.user._id;
+      const userRole = req.user.role;
+
+      // Verify user has access to classroom
+      const classroom = await Classroom.findById(classroomId);
+      if (!classroom) {
+        return res.status(404).json({ message: 'Classroom not found' });
+      }
+
+      const hasAccess = userRole === 'teacher' 
+        ? classroom.teacher.toString() === authorId.toString()
+        : classroom.students.some(s => s.student.toString() === authorId.toString());
+
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Access denied to this classroom' });
+      }
+
+      // Check if students are allowed to post
+      if (userRole === 'student' && !classroom.allowStudentPosts) {
+        return res.status(403).json({ message: 'Students are not allowed to post in this classroom' });
+      }
+
+      // Process attachments
+      const attachments = [];
+      if (req.files && req.files.length > 0) {
+        req.files.forEach(file => {
+          attachments.push({
+            fileName: file.originalname,
+            fileUrl: file.location || `/uploads/post-attachments/${file.filename}`,
+            fileSize: file.size,
+            fileType: file.mimetype
+          });
+        });
+      }
+
+      const post = new Post({
+        classroom: classroomId,
+        author: authorId,
+        type: type || 'general',
+        title,
+        content,
+        allowComments: allowComments !== undefined ? allowComments : true,
+        visibility: visibility || 'all',
+        targetLevels: targetLevels || [],
+        relatedAssignment,
+        attachments
+      });
+
+      await post.save();
+      await post.populate([
+        { path: 'author', select: 'name email role' },
+        { path: 'classroom', select: 'name classCode' },
+        { path: 'relatedAssignment', select: 'title dueDate' }
+      ]);
+
+      // Update classroom post count
+      await Classroom.findByIdAndUpdate(classroomId, { $inc: { totalPosts: 1 } });
+
+      res.status(201).json({
+        message: 'Post created successfully with attachments',
+        post
+      });
+    } catch (error) {
+      console.error('Create post with attachments error:', error);
+      res.status(500).json({ message: 'Server error while creating post with attachments' });
     }
   }
 
@@ -218,10 +295,16 @@ class PostController {
         return res.status(404).json({ message: 'Post not found' });
       }
 
-      // Check access
-      const hasAccess = userRole === 'teacher' 
-        ? post.classroom.teacher.toString() === userId.toString()
-        : post.classroom.students.some(s => s.student.toString() === userId.toString());
+      // Check access - simplified approach
+      let hasAccess = false;
+      
+      if (userRole === 'teacher') {
+        hasAccess = post.classroom.teacher.toString() === userId.toString();
+      } else {
+        // For students, check if userId exists in classroom.students array
+        const classroom = await Classroom.findById(post.classroom._id);
+        hasAccess = classroom.students.some(s => s.student.toString() === userId.toString());
+      }
 
       if (!hasAccess) {
         return res.status(403).json({ message: 'Access denied to this post' });
@@ -377,10 +460,16 @@ class PostController {
         return res.status(400).json({ message: 'Comments are disabled for this post' });
       }
 
-      // Check if user has access to classroom
-      const hasAccess = userRole === 'teacher' 
-        ? post.classroom.teacher.toString() === authorId.toString()
-        : post.classroom.students.some(s => s.student.toString() === authorId.toString());
+      // Check if user has access to classroom - simplified approach
+      let hasAccess = false;
+      
+      if (userRole === 'teacher') {
+        hasAccess = post.classroom.teacher.toString() === authorId.toString();
+      } else {
+        // For students, fetch classroom and check students array
+        const classroom = await Classroom.findById(post.classroom._id);
+        hasAccess = classroom.students.some(s => s.student.toString() === authorId.toString());
+      }
 
       if (!hasAccess) {
         return res.status(403).json({ message: 'Access denied to comment on this post' });
@@ -472,6 +561,128 @@ class PostController {
     } catch (error) {
       console.error('Delete comment error:', error);
       res.status(500).json({ message: 'Server error while deleting comment' });
+    }
+  }
+
+  // Download post attachment
+  async downloadPostAttachment(req, res) {
+    try {
+      const { postId, attachmentId } = req.params;
+      
+      // Get user ID from either authenticated user or token query parameter
+      let userId, userRole;
+      
+      if (req.user) {
+        // Standard authentication via middleware
+        userId = req.user._id;
+        userRole = req.user.role;
+      } else if (req.query.token) {
+        // Token authentication via query parameter (for direct downloads)
+        const jwt = require('jsonwebtoken');
+        try {
+          const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+          
+          const User = require('../models/User');
+          // Try both possible field names for compatibility
+          const userIdToLookup = decoded.userId || decoded.id;
+          
+          const user = await User.findById(userIdToLookup).select('-password');
+          if (!user) {
+            return res.status(401).json({ message: 'Invalid token' });
+          }
+          if (!user.isActive) {
+            return res.status(401).json({ message: 'Account is deactivated' });
+          }
+          
+          userId = user._id;
+          userRole = user.role;
+        } catch (tokenError) {
+          console.error('Token verification error:', tokenError);
+          return res.status(401).json({ message: 'Invalid or expired token' });
+        }
+      } else {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      // Find the post and verify access
+      const post = await Post.findById(postId)
+        .populate('classroom', 'name teacher students allowStudentPosts')
+        .populate('author', 'name email role');
+
+      if (!post) {
+        return res.status(404).json({ message: 'Post not found' });
+      }
+
+      // Check access based on user role
+      let hasAccess = false;
+      
+      if (userRole === 'teacher') {
+        hasAccess = post.classroom.teacher.toString() === userId.toString();
+      } else if (userRole === 'student') {
+        const classroom = await Classroom.findById(post.classroom._id);
+        hasAccess = classroom.students.some(s => s.student.toString() === userId.toString());
+      }
+
+      if (!hasAccess) {
+        return res.status(403).json({ message: 'Access denied to download this attachment' });
+      }
+
+      // Find the specific attachment
+      const attachment = post.attachments.find(att => att._id.toString() === attachmentId);
+      
+      if (!attachment) {
+        return res.status(404).json({ message: 'Attachment not found' });
+      }
+
+      // Get S3 service configuration
+      const { getSignedUrl, hasAWSConfig } = require('../services/s3Service');
+
+      // Handle S3 download
+      if (hasAWSConfig && attachment.fileUrl) {
+        try {
+          // Extract the S3 key from the full URL
+          let fileKey = attachment.fileUrl;
+          if (fileKey.includes('amazonaws.com/')) {
+            // Extract key from full S3 URL
+            fileKey = fileKey.split('amazonaws.com/')[1];
+          }
+          
+          const signedUrl = getSignedUrl(fileKey, attachment.fileName);
+          
+          if (signedUrl) {
+            return res.redirect(signedUrl);
+          } else {
+            throw new Error('Failed to generate signed URL');
+          }
+          
+        } catch (s3Error) {
+          console.error('S3 download error:', s3Error);
+          return res.status(500).json({ message: 'Error generating download link' });
+        }
+      }
+
+      // Handle local file download
+      const path = require('path');
+      const fs = require('fs');
+      
+      // For local files, fileUrl should be the relative path
+      const filePath = path.join(process.cwd(), attachment.fileUrl.startsWith('/') ? attachment.fileUrl.substring(1) : attachment.fileUrl);
+      
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: 'File not found on server' });
+      }
+
+      // Set proper headers for file download
+      res.setHeader('Content-Disposition', `attachment; filename="${attachment.fileName}"`);
+      res.setHeader('Content-Type', attachment.fileType || 'application/octet-stream');
+      
+      // Stream file to prevent memory issues with large files
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+
+    } catch (error) {
+      console.error('Download post attachment error:', error);
+      res.status(500).json({ message: 'Server error while downloading attachment' });
     }
   }
 }

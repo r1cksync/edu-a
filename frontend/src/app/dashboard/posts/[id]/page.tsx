@@ -33,10 +33,12 @@ export default function PostDetailPage() {
   
   const [comment, setComment] = useState('')
 
-  const { data: post, isLoading } = useQuery({
+  const { data: postResponse, isLoading } = useQuery({
     queryKey: ['post', postId],
     queryFn: () => apiClient.getPost(postId),
   })
+
+  const post = (postResponse as any)?.post || postResponse
 
   const addCommentMutation = useMutation({
     mutationFn: (content: string) => apiClient.createComment(postId, { content }),
@@ -52,6 +54,16 @@ export default function PostDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['post', postId] })
     },
   })
+
+  const handleDownloadAttachment = async (attachmentId: string) => {
+    try {
+      await apiClient.downloadPostAttachment(postId, attachmentId)
+    } catch (error) {
+      console.error('Download failed:', error)
+      // Show user-friendly error message
+      alert('Failed to download attachment. Please try again.')
+    }
+  }
 
   if (isLoading) {
     return (
@@ -180,11 +192,17 @@ export default function PostDetailPage() {
                       <div className="flex items-center space-x-3">
                         <FileText className="h-5 w-5 text-gray-500" />
                         <div>
-                          <p className="font-medium">{attachment.filename}</p>
-                          <p className="text-sm text-gray-500">{attachment.size || 'Unknown size'}</p>
+                          <p className="font-medium">{attachment.fileName}</p>
+                          <p className="text-sm text-gray-500">
+                            {attachment.fileSize ? `${Math.round(attachment.fileSize / 1024)} KB` : 'Unknown size'}
+                          </p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleDownloadAttachment(attachment._id || attachment.id || index)}
+                      >
                         <Download className="h-4 w-4" />
                       </Button>
                     </div>
