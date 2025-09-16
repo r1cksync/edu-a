@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const http = require('http');
+const socketManager = require('./services/socketManager');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
@@ -9,6 +11,7 @@ const assignmentRoutes = require('./routes/assignmentRoutes');
 const postRoutes = require('./routes/postRoutes');
 const userRoutes = require('./routes/userRoutes');
 const videoClassRoutes = require('./routes/videoClassRoutes');
+const quizRoutes = require('./routes/quizRoutes');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -46,6 +49,7 @@ app.use('/api/assignments', assignmentRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/video-classes', videoClassRoutes);
+app.use('/api/quizzes', quizRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
@@ -57,7 +61,12 @@ app.use('*', (req, res) => {
 
 // Start server only if not in test environment
 if (require.main === module) {
-  const server = app.listen(PORT, () => {
+  const server = http.createServer(app);
+  
+  // Initialize Socket.io
+  socketManager.initialize(server);
+  
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
 

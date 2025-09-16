@@ -528,6 +528,173 @@ class ApiClient {
       method: 'DELETE',
     })
   }
+
+  // Quiz endpoints
+  async createQuiz(data: {
+    classroomId: string
+    title: string
+    description?: string
+    instructions?: string
+    questions: Array<{
+      type: 'multiple-choice' | 'true-false' | 'single-choice'
+      question: string
+      options: Array<{ text: string; isCorrect: boolean }>
+      explanation?: string
+      points?: number
+      timeLimit?: number
+    }>
+    scheduledStartTime: string
+    scheduledEndTime: string
+    duration: number
+    passingScore?: number
+    shuffleQuestions?: boolean
+    shuffleOptions?: boolean
+    showResults?: boolean
+    allowReview?: boolean
+    isProctored?: boolean
+    proctoringSettings?: any
+    attempts?: number
+    tags?: string[]
+    difficulty?: 'easy' | 'medium' | 'hard'
+  }) {
+    return this.request(`/quizzes/classrooms/${data.classroomId}/quizzes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getClassroomQuizzes(classroomId: string, params?: {
+    status?: string
+    limit?: number
+    page?: number
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.status) queryParams.append('status', params.status)
+    if (params?.limit) queryParams.append('limit', params.limit.toString())
+    if (params?.page) queryParams.append('page', params.page.toString())
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request(`/quizzes/classrooms/${classroomId}/quizzes${query}`)
+  }
+
+  async getActiveQuizzes(classroomId: string) {
+    return this.request(`/quizzes/classrooms/${classroomId}/quizzes/active`)
+  }
+
+  async getQuiz(quizId: string) {
+    return this.request(`/quizzes/quizzes/${quizId}`)
+  }
+
+  // Student quiz endpoints
+  async getStudentQuizzes(classroomId: string, params?: {
+    status?: 'all' | 'available' | 'attempted' | 'completed'
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.status && params.status !== 'all') {
+      queryParams.append('status', params.status)
+    }
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request(`/quizzes/classrooms/${classroomId}/quizzes${query}`)
+  }
+
+  async getStudentQuizSessions(classroomId: string) {
+    return this.request(`/quizzes/classrooms/${classroomId}/sessions/student`)
+  }
+
+  async updateQuiz(quizId: string, updates: any) {
+    return this.request(`/quizzes/quizzes/${quizId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    })
+  }
+
+  async deleteQuiz(quizId: string) {
+    return this.request(`/quizzes/quizzes/${quizId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  // Quiz Session endpoints
+  async startQuizSession(quizId: string, proctoringData?: any) {
+    return this.request(`/quizzes/quizzes/${quizId}/sessions`, {
+      method: 'POST',
+      body: JSON.stringify({ proctoringData }),
+    })
+  }
+
+  async getCurrentQuizSession(quizId: string) {
+    return this.request(`/quizzes/quizzes/${quizId}/sessions/current`)
+  }
+
+  async saveQuizAnswers(sessionId: string, answers: Record<string, string>) {
+    return this.request(`/quizzes/sessions/${sessionId}/answers`, {
+      method: 'PUT',
+      body: JSON.stringify({ answers }),
+    })
+  }
+
+  async submitQuiz(sessionId: string) {
+    return this.request(`/quizzes/sessions/${sessionId}/submit`, {
+      method: 'POST',
+    })
+  }
+
+  async getQuizResults(sessionId: string) {
+    return this.request(`/quizzes/sessions/${sessionId}/results`, {
+      method: 'GET',
+    })
+  }
+
+  async updateProctoringData(sessionId: string, data: any) {
+    return this.request(`/quizzes/sessions/${sessionId}/proctoring`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async reportViolation(sessionId: string, violation: any) {
+    return this.request(`/quizzes/sessions/${sessionId}/violations`, {
+      method: 'POST',
+      body: JSON.stringify({ violation }),
+    })
+  }
+
+  async getQuizSessionResults(sessionId: string) {
+    return this.request(`/quizzes/sessions/${sessionId}/results`)
+  }
+
+  // Quiz Review endpoints (for teachers)
+  async getSessionsForReview(classroomId: string, params?: {
+    status?: string
+    riskLevel?: string
+    limit?: number
+    page?: number
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.status) queryParams.append('status', params.status)
+    if (params?.riskLevel) queryParams.append('riskLevel', params.riskLevel)
+    if (params?.limit) queryParams.append('limit', params.limit.toString())
+    if (params?.page) queryParams.append('page', params.page.toString())
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request(`/quizzes/classrooms/${classroomId}/sessions/review${query}`)
+  }
+
+  async reviewQuizSession(sessionId: string, data: {
+    decision: 'accept' | 'reject' | 'partial_credit' | 'retake_required'
+    notes?: string
+    scoreAdjustment?: number
+  }) {
+    return this.request(`/quizzes/sessions/${sessionId}/review`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getQuizSessionDetails(sessionId: string) {
+    return this.request(`/quizzes/sessions/${sessionId}/student-details`)
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)
