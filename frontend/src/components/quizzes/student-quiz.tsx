@@ -243,7 +243,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
           hasQuiz: !!quiz,
           hasStartedAt: !!session.startedAt,
           startedAt: session.startedAt,
-          quizDuration: quiz.duration,
+          quizDuration: session.quiz.duration,
           startedAtType: typeof session.startedAt
         })
         
@@ -260,12 +260,12 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
             return
           }
           
-          const endTime = new Date(startTime.getTime() + quiz.duration * 60000)
+          const endTime = new Date(startTime.getTime() + session.quiz.duration * 60000)
           const remaining = Math.max(0, endTime.getTime() - Date.now())
           
           console.log('⏱️ Initializing timer from existing session:', {
             startTime: startTime.toISOString(),
-            duration: quiz.duration,
+            duration: session.quiz.duration,
             endTime: endTime.toISOString(),
             remaining,
             remainingMinutes: Math.floor(remaining / 60000),
@@ -343,11 +343,11 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
       
       if (quiz) {
         const startTime = new Date(session.startTime)
-        const endTime = new Date(startTime.getTime() + quiz.duration * 60000)
+        const endTime = new Date(startTime.getTime() + session.quiz.duration * 60000)
         const remaining = Math.max(0, endTime.getTime() - Date.now())
         console.log('Initializing timer from new session:', {
           startTime: startTime.toISOString(),
-          duration: quiz.duration,
+          duration: session.quiz.duration,
           endTime: endTime.toISOString(),
           remaining,
           remainingMinutes: Math.floor(remaining / 60000)
