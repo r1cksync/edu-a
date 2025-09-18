@@ -171,10 +171,14 @@ videoClassSchema.methods.startClass = function() {
   return this.save();
 };
 
-videoClassSchema.methods.endClass = function() {
+videoClassSchema.methods.endClass = async function() {
   this.status = 'ended';
   this.actualEndTime = new Date();
   this.calculateAttendance();
+  
+  // Mark absent students who didn't join the class
+  await this.markAbsentStudents();
+  
   return this.save();
 };
 
@@ -214,6 +218,69 @@ videoClassSchema.methods.calculateAttendance = function() {
   this.totalStudentsAttended = this.participants.filter(p => p.joinedAt).length;
   if (this.totalStudentsInvited > 0) {
     this.attendancePercentage = Math.round((this.totalStudentsAttended / this.totalStudentsInvited) * 100);
+  }
+};
+
+videoClassSchema.methods.markAbsentStudents = async function() {
+  try {
+    const Attendance = require('./Attendance');
+    const Classroom = require('./Classroom');
+    
+    // Get all students in the classroom
+    const classroom = await Classroom.findById(this.classroom).populate('students.student');
+    if (!classroom || !classroom.students) {
+      return;
+    }
+    
+    // Get students who attended (have attendance records)
+    const attendedStudentIds = await Attendance.find({
+      videoClass: this._id,
+      status: { $in: ['present', 'late'] }
+    }).distinct('student');
+    
+    // Mark absent students who didn't attend
+    const absentPromises = [];
+    
+    for (const studentEntry of classroom.students) {
+      const studentId = studentEntry.student._id;
+      
+      // Check if student didn't attend
+      const hasAttended = attendedStudentIds.some(id => id.toString() === studentId.toString());
+      
+      if (!hasAttended) {
+        // Check if attendance record already exists
+        const existingRecord = await Attendance.findOne({
+          student: studentId,
+          videoClass: this._id
+        });
+        
+        if (!existingRecord) {
+          // Create absent record
+          absentPromises.push(
+            Attendance.create({
+              student: studentId,
+              classroom: this.classroom,
+              videoClass: this._id,
+              status: 'absent',
+              classStartTime: this.actualStartTime || this.scheduledStartTime,
+              classEndTime: this.actualEndTime || this.scheduledEndTime,
+              attendancePercentage: 0,
+              duration: 0
+            })
+          );
+        }
+      }
+    }
+    
+    // Execute all absent marking operations
+    if (absentPromises.length > 0) {
+      await Promise.all(absentPromises);
+      console.log(`Marked ${absentPromises.length} students as absent for class ${this._id}`);
+    }
+    
+  } catch (error) {
+    console.error('Error marking absent students:', error);
+    // Don't throw error to avoid breaking class end operation
   }
 };
 

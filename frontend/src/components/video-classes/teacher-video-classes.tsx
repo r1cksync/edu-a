@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { formatDistanceToNow, format } from 'date-fns'
+import { AttendanceDashboard } from '@/components/attendance'
 import { 
   Clock, 
   Play, 
@@ -17,7 +18,8 @@ import {
   Edit,
   Trash2,
   Copy,
-  X
+  X,
+  BarChart3
 } from 'lucide-react'
 
 interface VideoClass {
@@ -67,6 +69,7 @@ export default function TeacherVideoClasses({ classroomId }: TeacherVideoClasses
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedClass, setSelectedClass] = useState<VideoClass | null>(null)
+  const [activeView, setActiveView] = useState<'classes' | 'attendance'>('classes')
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'live' | 'ended'>('all')
   const [formData, setFormData] = useState({
     title: '',
@@ -258,13 +261,44 @@ export default function TeacherVideoClasses({ classroomId }: TeacherVideoClasses
         </div>
       )}
 
-      {/* Filter tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {['all', 'scheduled', 'live', 'ended'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setFilter(tab as any)}
+      {/* View Toggle */}
+      <div className="flex items-center justify-center">
+        <div className="bg-gray-100 p-1 rounded-lg inline-flex">
+          <button
+            onClick={() => setActiveView('classes')}
+            className={`px-6 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeView === 'classes'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Video className="w-4 h-4 mr-2 inline" />
+            Classes
+          </button>
+          <button
+            onClick={() => setActiveView('attendance')}
+            className={`px-6 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeView === 'attendance'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 mr-2 inline" />
+            Attendance
+          </button>
+        </div>
+      </div>
+
+      {/* Conditional Content Based on Active View */}
+      {activeView === 'classes' ? (
+        <>
+          {/* Filter tabs */}
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              {['all', 'scheduled', 'live', 'ended'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setFilter(tab as any)}
               className={`${
                 filter === tab
                   ? 'border-indigo-500 text-indigo-600'
@@ -409,6 +443,11 @@ export default function TeacherVideoClasses({ classroomId }: TeacherVideoClasses
           ))
         )}
       </div>
+      </>
+      ) : (
+        /* Attendance View */
+        <AttendanceDashboard classroomId={classroomId} />
+      )}
 
       {/* Schedule Class Modal */}
       {showScheduleModal && (

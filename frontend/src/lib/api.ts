@@ -695,6 +695,89 @@ class ApiClient {
   async getQuizSessionDetails(sessionId: string) {
     return this.request(`/quizzes/sessions/${sessionId}/student-details`)
   }
+
+  // Attendance endpoints
+  async getAttendanceDashboard(classroomId: string, params?: {
+    startDate?: string
+    endDate?: string
+    limit?: number
+    page?: number
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.startDate) queryParams.append('startDate', params.startDate)
+    if (params?.endDate) queryParams.append('endDate', params.endDate)
+    if (params?.limit) queryParams.append('limit', params.limit.toString())
+    if (params?.page) queryParams.append('page', params.page.toString())
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request(`/attendance/classrooms/${classroomId}/dashboard${query}`)
+  }
+
+  async getStudentAttendanceStats(classroomId: string, studentId?: string) {
+    const endpoint = studentId 
+      ? `/attendance/classrooms/${classroomId}/students/stats?studentId=${studentId}`
+      : `/attendance/classrooms/${classroomId}/students/stats`
+    return this.request(endpoint)
+  }
+
+  async getClassroomAttendanceStats(classroomId: string, params?: {
+    startDate?: string
+    endDate?: string
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.startDate) queryParams.append('startDate', params.startDate)
+    if (params?.endDate) queryParams.append('endDate', params.endDate)
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request(`/attendance/classrooms/${classroomId}/stats${query}`)
+  }
+
+  async getAttendanceHistory(classroomId: string, params?: {
+    studentId?: string
+    startDate?: string
+    endDate?: string
+    limit?: number
+    page?: number
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.studentId) queryParams.append('studentId', params.studentId)
+    if (params?.startDate) queryParams.append('startDate', params.startDate)
+    if (params?.endDate) queryParams.append('endDate', params.endDate)
+    if (params?.limit) queryParams.append('limit', params.limit.toString())
+    if (params?.page) queryParams.append('page', params.page.toString())
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request(`/attendance/classrooms/${classroomId}/records${query}`)
+  }
+
+  async markAttendance(data: {
+    studentId: string
+    videoClassId: string
+    status: 'present' | 'absent' | 'joined' | 'left'
+    timestamp?: string
+  }) {
+    return this.request(`/attendance/classes/${data.videoClassId}/mark`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async bulkMarkAttendance(classId: string, data: Array<{
+    studentId: string
+    status: 'present' | 'absent'
+    notes?: string
+  }>) {
+    return this.request(`/attendance/classes/${classId}/bulk-mark`, {
+      method: 'POST',
+      body: JSON.stringify({ attendanceRecords: data }),
+    })
+  }
+
+  async syncAbsencesForEndedClasses(classroomId: string) {
+    return this.request(`/attendance/classrooms/${classroomId}/sync-absences`, {
+      method: 'POST',
+    })
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)

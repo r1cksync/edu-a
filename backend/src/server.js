@@ -12,6 +12,7 @@ const postRoutes = require('./routes/postRoutes');
 const userRoutes = require('./routes/userRoutes');
 const videoClassRoutes = require('./routes/videoClassRoutes');
 const quizRoutes = require('./routes/quizRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -50,6 +51,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/video-classes', videoClassRoutes);
 app.use('/api/quizzes', quizRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

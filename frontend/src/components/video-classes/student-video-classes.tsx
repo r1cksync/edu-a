@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { formatDistanceToNow, format, isAfter, isBefore } from 'date-fns'
+import { StudentAttendance } from '@/components/attendance'
 import { 
   Clock, 
   Play, 
@@ -14,7 +15,8 @@ import {
   ExternalLink,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  BarChart3
 } from 'lucide-react'
 
 interface VideoClass {
@@ -61,6 +63,7 @@ interface StudentVideoClassesProps {
 }
 
 export default function StudentVideoClasses({ classroomId }: StudentVideoClassesProps) {
+  const [activeView, setActiveView] = useState<'classes' | 'attendance'>('classes')
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'live' | 'ended'>('all')
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -170,8 +173,39 @@ export default function StudentVideoClasses({ classroomId }: StudentVideoClasses
         <h2 className="text-2xl font-bold text-gray-900">Video Classes</h2>
       </div>
 
-      {/* Live classes alert */}
-      {liveClasses.length > 0 && (
+      {/* View Toggle */}
+      <div className="flex items-center justify-center">
+        <div className="bg-gray-100 p-1 rounded-lg inline-flex">
+          <button
+            onClick={() => setActiveView('classes')}
+            className={`px-6 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeView === 'classes'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Video className="w-4 h-4 mr-2 inline" />
+            Classes
+          </button>
+          <button
+            onClick={() => setActiveView('attendance')}
+            className={`px-6 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeView === 'attendance'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 mr-2 inline" />
+            Attendance
+          </button>
+        </div>
+      </div>
+
+      {/* Conditional Content Based on Active View */}
+      {activeView === 'classes' ? (
+        <>
+          {/* Live classes alert */}
+          {liveClasses.length > 0 && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-center">
             <div className="flex-shrink-0">
@@ -436,6 +470,11 @@ export default function StudentVideoClasses({ classroomId }: StudentVideoClasses
           })
         )}
       </div>
+      </>
+      ) : (
+        /* Attendance View */
+        <StudentAttendance classroomId={classroomId} />
+      )}
     </div>
   )
 }

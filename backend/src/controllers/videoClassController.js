@@ -3,6 +3,7 @@ const Classroom = require('../models/Classroom');
 const User = require('../models/User');
 const Post = require('../models/Post');
 const { videoService } = require('../services/videoCallingService');
+const Attendance = require('../models/Attendance');
 
 class VideoClassController {
   
@@ -539,6 +540,15 @@ class VideoClassController {
 
       await videoClass.addParticipant(studentId);
 
+      // Automatically mark attendance when student joins
+      try {
+        await Attendance.markAttendance(studentId, classId, 'present');
+        console.log(`Attendance marked for student ${studentId} in class ${classId}`);
+      } catch (attendanceError) {
+        console.error('Error marking attendance:', attendanceError);
+        // Don't fail the join operation if attendance marking fails
+      }
+
       res.json({
         message: 'Joined class successfully',
         videoClass: {
@@ -568,6 +578,24 @@ class VideoClassController {
 
       if (!videoClass) {
         return res.status(404).json({ message: 'Video class not found' });
+      }
+
+      // Update leave time for attendance tracking
+      try {
+        const attendanceRecord = await Attendance.findOne({
+          student: studentId,
+          videoClass: classId
+        });
+
+        if (attendanceRecord && !attendanceRecord.leftAt) {
+          attendanceRecord.leftAt = new Date();
+          attendanceRecord.calculateDuration();
+          attendanceRecord.calculateAttendancePercentage();
+          await attendanceRecord.save();
+        }
+      } catch (attendanceError) {
+        console.error('Error updating attendance on leave:', attendanceError);
+        // Don't fail the leave operation if attendance update fails
       }
 
       await videoClass.removeParticipant(studentId);
