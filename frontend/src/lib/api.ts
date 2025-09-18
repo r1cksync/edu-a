@@ -778,6 +778,118 @@ class ApiClient {
       method: 'POST',
     })
   }
+
+  // Engagement Analysis endpoints
+  async analyzeStudentEngagement(formData: FormData) {
+    const { token } = useAuthStore.getState()
+    const url = `${this.baseUrl}/engagement/analyze`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+        // Don't set Content-Type, let browser set it for FormData
+      },
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
+    }
+
+    return await response.json()
+  }
+
+  async getClassStudents(classId: string) {
+    return this.request(`/engagement/class/${classId}/students`)
+  }
+
+  async getClassEngagementHistory(classId: string, limit = 10) {
+    return this.request(`/engagement/class/${classId}/history?limit=${limit}`)
+  }
+
+  async getStudentEngagementHistory(studentId: string, page = 1, limit = 10) {
+    return this.request(`/engagement/student/${studentId}/history?page=${page}&limit=${limit}`)
+  }
+
+  async checkEngagementApiHealth() {
+    return this.request(`/engagement/api/health`)
+  }
+
+  // Daily Practice Problems (DPP) endpoints
+  async createDPP(dppData: any) {
+    return this.request('/dpp', {
+      method: 'POST',
+      body: JSON.stringify(dppData)
+    })
+  }
+
+  async getClassroomDPPs(classroomId: string, params?: any) {
+    const queryString = params ? `?${new URLSearchParams(params).toString()}` : ''
+    return this.request(`/dpp/classroom/${classroomId}${queryString}`)
+  }
+
+  async getDPP(dppId: string) {
+    return this.request(`/dpp/${dppId}`)
+  }
+
+  async updateDPP(dppId: string, updateData: any) {
+    return this.request(`/dpp/${dppId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updateData)
+    })
+  }
+
+  async deleteDPP(dppId: string) {
+    return this.request(`/dpp/${dppId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async togglePublishDPP(dppId: string) {
+    return this.request(`/dpp/${dppId}/publish`, {
+      method: 'PATCH'
+    })
+  }
+
+  async submitMCQAnswers(dppId: string, answers: any[]) {
+    return this.request(`/dpp/${dppId}/submit/mcq`, {
+      method: 'POST',
+      body: JSON.stringify({ answers })
+    })
+  }
+
+  async submitDPPFiles(dppId: string, formData: FormData) {
+    const { token } = useAuthStore.getState()
+    const url = `${this.baseUrl}/dpp/${dppId}/submit/files`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
+    }
+
+    return await response.json()
+  }
+
+  async gradeDPPSubmission(dppId: string, submissionId: string, gradeData: any) {
+    return this.request(`/dpp/${dppId}/submissions/${submissionId}/grade`, {
+      method: 'PUT',
+      body: JSON.stringify(gradeData)
+    })
+  }
+
+  async getDPPAnalytics(dppId: string) {
+    return this.request(`/dpp/${dppId}/analytics`)
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)

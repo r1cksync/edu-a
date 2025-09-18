@@ -22,7 +22,8 @@ import {
   Calendar,
   BookOpen,
   Video,
-  Brain
+  Brain,
+  Target
 } from 'lucide-react'
 import Link from 'next/link'
 import ClassroomPosts from '@/components/classroom/posts'
@@ -33,6 +34,7 @@ import TeacherVideoClasses from '@/components/video-classes/teacher-video-classe
 import StudentVideoClasses from '@/components/video-classes/student-video-classes'
 import TeacherQuizzes from '@/components/quizzes/teacher-quizzes'
 import StudentQuizzes from '@/components/quizzes/student-quizzes'
+import { DPPList } from '@/components/dpp/DPPList'
 
 export default function ClassroomPage() {
   const params = useParams()
@@ -46,6 +48,12 @@ export default function ClassroomPage() {
   const { data: classroom, isLoading } = useQuery({
     queryKey: ['classroom', classroomId],
     queryFn: () => apiClient.getClassroom(classroomId),
+  })
+
+  const { data: videoClasses } = useQuery({
+    queryKey: ['video-classes', classroomId],
+    queryFn: () => apiClient.getClassroomVideoClasses(classroomId),
+    enabled: !!classroomId
   })
 
   const { data: studentsResponse } = useQuery({
@@ -182,7 +190,7 @@ export default function ClassroomPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`grid w-full ${isOwner ? 'grid-cols-6' : 'grid-cols-5'}`}>
+          <TabsList className={`grid w-full ${isOwner ? 'grid-cols-7' : 'grid-cols-6'}`}>
             <TabsTrigger value="posts" className="flex items-center space-x-2">
               <MessageSquare className="h-4 w-4" />
               <span>Posts</span>
@@ -190,6 +198,10 @@ export default function ClassroomPage() {
             <TabsTrigger value="assignments" className="flex items-center space-x-2">
               <FileText className="h-4 w-4" />
               <span>Assignments</span>
+            </TabsTrigger>
+            <TabsTrigger value="dpp" className="flex items-center space-x-2">
+              <Target className="h-4 w-4" />
+              <span>DPP</span>
             </TabsTrigger>
             <TabsTrigger value="quizzes" className="flex items-center space-x-2">
               <Brain className="h-4 w-4" />
@@ -219,8 +231,14 @@ export default function ClassroomPage() {
             <ClassroomAssignments classroomId={classroomId} isTeacher={isTeacher} />
           </TabsContent>
 
-          <TabsContent value="quizzes" className="space-y-6">
-            {isTeacher ? (
+          <TabsContent value="dpp" className="space-y-6">
+            <DPPList 
+              classroomId={classroomId} 
+              videoClasses={(videoClasses as any)?.classes || []} 
+            />
+          </TabsContent>
+
+          <TabsContent value="quizzes" className="space-y-6">{isTeacher ? (
               <TeacherQuizzes classroomId={classroomId} />
             ) : (
               <StudentQuizzes classroomId={classroomId} />

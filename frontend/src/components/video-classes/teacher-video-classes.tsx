@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { formatDistanceToNow, format } from 'date-fns'
 import { AttendanceDashboard } from '@/components/attendance'
+import { EngagementAnalysis } from '@/components/engagement/EngagementAnalysis'
 import { 
   Clock, 
   Play, 
@@ -19,7 +20,8 @@ import {
   Trash2,
   Copy,
   X,
-  BarChart3
+  BarChart3,
+  Brain
 } from 'lucide-react'
 
 interface VideoClass {
@@ -69,7 +71,7 @@ export default function TeacherVideoClasses({ classroomId }: TeacherVideoClasses
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedClass, setSelectedClass] = useState<VideoClass | null>(null)
-  const [activeView, setActiveView] = useState<'classes' | 'attendance'>('classes')
+  const [activeView, setActiveView] = useState<'classes' | 'attendance' | 'engagement'>('classes')
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'live' | 'ended'>('all')
   const [formData, setFormData] = useState({
     title: '',
@@ -286,6 +288,17 @@ export default function TeacherVideoClasses({ classroomId }: TeacherVideoClasses
             <BarChart3 className="w-4 h-4 mr-2 inline" />
             Attendance
           </button>
+          <button
+            onClick={() => setActiveView('engagement')}
+            className={`px-6 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeView === 'engagement'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Brain className="w-4 h-4 mr-2 inline" />
+            Engagement Analysis
+          </button>
         </div>
       </div>
 
@@ -444,9 +457,15 @@ export default function TeacherVideoClasses({ classroomId }: TeacherVideoClasses
         )}
       </div>
       </>
-      ) : (
+      ) : activeView === 'attendance' ? (
         /* Attendance View */
         <AttendanceDashboard classroomId={classroomId} />
+      ) : (
+        /* Engagement Analysis View */
+        <EngagementAnalysis 
+          classId={selectedClass?._id} 
+          classes={classes?.map(cls => ({ _id: cls._id, title: cls.title, status: cls.status })) || []}
+        />
       )}
 
       {/* Schedule Class Modal */}
