@@ -25,6 +25,7 @@ export interface UseProctoringReturn {
   initialize: () => Promise<boolean>
   start: () => Promise<void>
   stop: () => Promise<void>
+  allowStop: () => void
   performEnvironmentScan: () => Promise<{
     success: boolean
     issues: string[]
@@ -80,7 +81,8 @@ export function useProctoring({
     
     return () => {
       // Cleanup on unmount
-      if (proctoringManagerRef.current) {
+      if (proctoringManagerRef.current && proctoringManagerRef.current.getState().isActive) {
+        proctoringManagerRef.current.allowStop()
         proctoringManagerRef.current.stop()
       }
     }
@@ -148,6 +150,12 @@ export function useProctoring({
     }
   }, [])
   
+  const allowStop = useCallback(() => {
+    if (proctoringManagerRef.current) {
+      proctoringManagerRef.current.allowStop()
+    }
+  }, [])
+  
   const performEnvironmentScan = useCallback(async () => {
     if (!proctoringManagerRef.current) {
       return {
@@ -170,6 +178,7 @@ export function useProctoring({
     setVideoElement(null)
     
     if (proctoringManagerRef.current) {
+      proctoringManagerRef.current.allowStop()
       proctoringManagerRef.current.stop()
     }
   }, [])
@@ -196,6 +205,7 @@ export function useProctoring({
     initialize,
     start,
     stop,
+    allowStop,
     performEnvironmentScan,
     
     // Utils

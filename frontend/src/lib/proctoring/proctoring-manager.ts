@@ -21,6 +21,7 @@ export class ProctoringManager {
   private stream?: MediaStream
   private onViolation?: (violation: ViolationEvent) => void
   private onStateChange?: (state: ProctoringState) => void
+  private canStop: boolean = false // Flag to control stopping proctoring
   
   constructor(config: ProctoringConfig) {
     this.config = config
@@ -70,6 +71,11 @@ export class ProctoringManager {
     try {
       console.log('Starting proctoring monitoring...')
       
+      // Start camera stream if not already started
+      if (this.config.webcamRequired && !this.stream) {
+        await this.startCameraStream()
+      }
+      
       // Start all active services
       if (this.services.faceDetection && this.config.faceDetection) {
         await this.services.faceDetection.start()
@@ -91,6 +97,7 @@ export class ProctoringManager {
       this.startHeartbeat()
       
       this.state.isActive = true
+      this.canStop = false // Reset canStop flag when starting
       this.notifyStateChange()
       
       console.log('Proctoring monitoring started')
@@ -101,6 +108,11 @@ export class ProctoringManager {
   }
 
   async stop(): Promise<void> {
+    if (!this.canStop) {
+      console.log('Proctoring stop prevented: Quiz still in progress')
+      return
+    }
+
     console.log('Stopping proctoring monitoring...')
     
     // Stop all services
@@ -132,28 +144,13 @@ export class ProctoringManager {
     console.log('Proctoring monitoring stopped')
   }
 
-  private async checkDeviceCapabilities(): Promise<void> {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      
-      this.state.hasWebcam = devices.some(device => device.kind === 'videoinput')
-      this.state.hasMicrophone = devices.some(device => device.kind === 'audioinput')
-      
-      if (this.config.webcamRequired && !this.state.hasWebcam) {
-        throw new Error('Webcam is required but not available')
-      }
-      
-      console.log('Device capabilities checked:', {
-        webcam: this.state.hasWebcam,
-        microphone: this.state.hasMicrophone
-      })
-    } catch (error) {
-      console.error('Failed to check device capabilities:', error)
-      throw error
-    }
+  // Method to allow stopping proctoring (called when quiz time is up or submitted)
+  allowStop(): void {
+    this.canStop = true
+    console.log('Proctoring stop allowed')
   }
 
-  private async initializeCamera(): Promise<void> {
+  private async startCameraStream(): Promise<void> {
     try {
       const constraints: MediaStreamConstraints = {
         video: {
@@ -180,21 +177,46 @@ export class ProctoringManager {
         setTimeout(reject, 5000) // 5 second timeout
       })
       
-      console.log('Camera initialized successfully')
+      console.log('Camera stream started successfully')
     } catch (error) {
-      console.error('Failed to initialize camera:', error)
+      console.error('Failed to start camera stream:', error)
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
           throw new Error('Camera access denied. Please allow camera access to continue.')
         } else if (error.name === 'NotFoundError') {
           throw new Error('No camera found. Please connect a camera to continue.')
         } else {
-          throw new Error(`Camera initialization failed: ${error.message}`)
+          throw new Error(`Camera stream failed: ${error.message}`)
         }
       } else {
-        throw new Error('Camera initialization failed: Unknown error')
+        throw new Error('Camera stream failed: Unknown error')
       }
     }
+  }
+
+  private async checkDeviceCapabilities(): Promise<void> {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      
+      this.state.hasWebcam = devices.some(device => device.kind === 'videoinput')
+      this.state.hasMicrophone = devices.some(device => device.kind === 'audioinput')
+      
+      if (this.config.webcamRequired && !this.state.hasWebcam) {
+        throw new Error('Webcam is required but not available')
+      }
+      
+      console.log('Device capabilities checked:', {
+        webcam: this.state.hasWebcam,
+        microphone: this.state.hasMicrophone
+      })
+    } catch (error) {
+      console.error('Failed to check device capabilities:', error)
+      throw error
+    }
+  }
+
+  private async initializeCamera(): Promise<void> {
+    console.log('Camera setup ready')
   }
 
   private async initializeServices(): Promise<void> {

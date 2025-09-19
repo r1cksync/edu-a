@@ -22,12 +22,12 @@ import {
   Monitor,
   Users,
   Save,
-  Send,
   ArrowLeft,
   ArrowRight,
   Flag,
   AlertCircle,
-  Loader2
+  Loader2,
+  Send
 } from 'lucide-react'
 
 // Helper function to format time
@@ -73,7 +73,7 @@ interface Quiz {
 
 interface QuizSession {
   _id: string
-  quiz: string
+  quiz: Quiz
   student: string
   startTime: string
   endTime?: string
@@ -142,6 +142,8 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
 
   // Extract session from response or use passed data
   const session = passedSessionData || (sessionData as any)?.session
+
+  console.log('Quiz:',session.quiz);
 
   console.log('🎯 RENDER: Current data state:', {
     hasPassedSessionData: !!passedSessionData,
@@ -299,6 +301,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     initialize: initializeProctoring,
     start: startProctoring,
     stop: stopProctoring,
+    allowStop,
     performEnvironmentScan
   } = useProctoring({
     config: quiz?.proctoringSettings || MODERATE_PROCTORING_CONFIG,
@@ -376,6 +379,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
       console.log('✅ Quiz submitted successfully:', data)
       console.log('✅ Redirecting to classroom:', classroomId)
       
+      allowStop()
       stopProctoring()
       
       // Use a non-blocking notification approach
@@ -487,6 +491,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
         if (newTime <= 0 && !timerStoppedRef.current) {
           console.log('⏰ Time up - auto submitting')
           timerStoppedRef.current = true
+          allowStop() // Allow proctoring to stop
           handleSubmit()
           return 0
         }
@@ -503,7 +508,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     return () => {
       clearInterval(timer)
     }
-  }, [quizSession?._id, isSubmitting]) // Only depend on quiz session ID and submission state
+  }, [quizSession?._id, isSubmitting, allowStop, handleSubmit])
   
   // Auto-save effect
   useEffect(() => {
@@ -584,7 +589,6 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     }
   }, [quizSession, answers, saveAnswersMutation])
   
-  // Submit quiz
   // Environment setup
   const handleEnvironmentSetup = useCallback(async () => {
     console.log('Starting environment setup...', { isProctored: quiz?.isProctored })
@@ -669,7 +673,8 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
           {format(startTime, 'EEEE, MMMM d, yyyy \'at\' h:mm a')}
         </p>
         <p className="text-sm text-gray-500 mt-2">
-          {formatDistanceToNow(startTime, { addSuffix: true })}
+          {formatDistanceToNow(startTime, { addSuffix: true })
+}
         </p>
       </div>
     )
@@ -870,7 +875,10 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
           quiz={quiz}
           questions={questions}
           answers={answers}
-          onConfirm={handleSubmit}
+          onConfirm={() => {
+            setShowSubmitConfirm(false)
+            handleSubmit()
+          }}
           onCancel={() => setShowSubmitConfirm(false)}
           isSubmitting={isSubmitting}
           timeRemaining={timeRemaining}
