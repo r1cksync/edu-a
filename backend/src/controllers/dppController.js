@@ -254,6 +254,21 @@ const getClassroomDPPs = async (req, res) => {
       });
     }
 
+    // If teacher, calculate average scores for each DPP
+    if (userRole === 'teacher') {
+      dpps.forEach(dpp => {
+        const submissionCount = dpp.submissions ? dpp.submissions.length : 0;
+        if (submissionCount > 0) {
+          const totalScore = dpp.submissions.reduce((sum, sub) => sum + (sub.score || 0), 0);
+          const totalPossibleScore = submissionCount * dpp.maxScore;
+          const averageScore = totalPossibleScore > 0 ? (totalScore / totalPossibleScore) * 100 : 0;
+          dpp._doc.averageScore = Math.round(averageScore * 100) / 100; // Round to 2 decimal places
+        } else {
+          dpp._doc.averageScore = 0;
+        }
+      });
+    }
+
     res.json({
       success: true,
       dpps,
@@ -543,10 +558,14 @@ const submitMCQAnswers = async (req, res) => {
     dpp.submissions.push(submission);
     await dpp.save();
 
+    // Get the submission ID from the saved document
+    const savedSubmission = dpp.submissions[dpp.submissions.length - 1];
+
     res.json({
       success: true,
       message: 'MCQ answers submitted successfully',
       submission: {
+        _id: savedSubmission._id,
         score,
         maxScore: dpp.maxScore,
         isLate,
@@ -669,10 +688,14 @@ const submitFiles = async (req, res) => {
       dpp.submissions.push(submission);
       await dpp.save();
 
+      // Get the submission ID from the saved document
+      const savedSubmission = dpp.submissions[dpp.submissions.length - 1];
+
       res.json({
         success: true,
         message: 'Files submitted successfully',
         submission: {
+          _id: savedSubmission._id,
           fileSubmissions: fileSubmissions.map(fs => ({
             fileName: fs.fileName,
             fileSize: fs.fileSize,
@@ -761,7 +784,8 @@ const getDPPAnalytics = async (req, res) => {
     const dpp = await DailyPracticeProblem.findOne({
       _id: dppId,
       teacher: teacherId
-    }).populate('submissions.student', 'name email');
+    }).populate('submissions.student', 'name email')
+      .populate('classroom', 'students');
 
     if (!dpp) {
       return res.status(404).json({
@@ -770,11 +794,47 @@ const getDPPAnalytics = async (req, res) => {
       });
     }
 
-    // Get classroom student count
-    const classroom = await Classroom.findById(dpp.classroom);
-    const totalStudents = classroom.students.length;
+    console.log('DPP found:', {
+      id: dpp._id,
+      submissionCount: dpp.submissions.length,
+      hasQuestions: !!dpp.questions,
+      questionsCount: dpp.questions ? dpp.questions.length : 0
+    });
 
-    // Calculate difficulty distribution
+    if (dpp.submissions.length > 0) {
+      console.log('First submission structure:', {
+        id: dpp.submissions[0]._id,
+        hasAnswers: !!dpp.submissions[0].answers,
+        answersCount: dpp.submissions[0].answers ? dpp.submissions[0].answers.length : 0,
+        firstAnswer: dpp.submissions[0].answers ? dpp.submissions[0].answers[0] : null,
+        score: dpp.submissions[0].score,
+        maxScore: dpp.submissions[0].maxScore
+      });
+      
+      // Log all answers for debugging
+      if (dpp.submissions[0].answers) {
+        console.log('All answers in first submission:', dpp.submissions[0].answers);
+      }
+    }
+
+    console.log('Questions structure:', dpp.questions ? dpp.questions.map((q, index) => ({
+      index: index,
+      id: q._id,
+      difficulty: q.difficulty,
+      text: q.text?.substring(0, 50) + '...',
+      correctAnswer: q.correctAnswer,
+      hasOptions: !!q.options,
+      optionsCount: q.options ? q.options.length : 0,
+      options: q.options ? q.options.map(opt => ({
+        text: opt.text,
+        isCorrect: opt.isCorrect
+      })) : []
+    })) : 'No questions');
+
+    // Get classroom student count
+    const totalStudents = dpp.classroom ? dpp.classroom.students.length : 0;
+
+    // Calculate difficulty distribution and performance based on DPP type
     let difficultyDistribution = null;
     let difficultyPerformance = {
       easy: { avg: 0, count: 0 },
@@ -782,41 +842,163 @@ const getDPPAnalytics = async (req, res) => {
       hard: { avg: 0, count: 0 }
     };
 
-    if (dpp.type === 'mcq' && dpp.questions) {
+    if (dpp.type === 'mcq' && dpp.questions && dpp.questions.length > 0) {
+      // MCQ TYPE ANALYSIS
+      console.log('Analyzing MCQ type DPP');
+      
+      // Calculate difficulty distribution from questions
       difficultyDistribution = dpp.questions.reduce((acc, q) => {
         acc[q.difficulty] = (acc[q.difficulty] || 0) + 1;
         return acc;
       }, { easy: 0, medium: 0, hard: 0 });
 
-      // Calculate average performance by difficulty from submissions
-      dpp.submissions.forEach(submission => {
-        if (submission.questionScores) {
-          submission.questionScores.forEach((score, index) => {
-            const question = dpp.questions[index];
-            if (question && score.points !== undefined) {
-              const difficulty = question.difficulty;
-              const percentage = (score.points / question.marks) * 100;
-              difficultyPerformance[difficulty].avg += percentage;
-              difficultyPerformance[difficulty].count++;
+      // Calculate average performance by difficulty from MCQ submissions
+      const difficultyStats = {
+        easy: { totalAnswers: 0, correctAnswers: 0 },
+        medium: { totalAnswers: 0, correctAnswers: 0 },
+        hard: { totalAnswers: 0, correctAnswers: 0 }
+      };
+
+      dpp.submissions.forEach((submission, submissionIndex) => {
+        console.log(`Processing submission ${submissionIndex + 1}:`, {
+          id: submission._id,
+          hasAnswers: !!submission.answers,
+          answersCount: submission.answers ? submission.answers.length : 0
+        });
+        
+        if (submission.answers && Array.isArray(submission.answers)) {
+          submission.answers.forEach((answer, answerIndex) => {
+            console.log(`  Answer ${answerIndex + 1}:`, {
+              questionIndex: answer.questionIndex,
+              selectedOption: answer.selectedOption,
+              questionId: answer.questionId,
+              isCorrect: answer.isCorrect
+            });
+            
+            // Use questionIndex to find the question since questionId is undefined
+            if (answer.questionIndex !== undefined && answer.questionIndex < dpp.questions.length) {
+              const question = dpp.questions[answer.questionIndex];
+              console.log(`  Found question by index:`, question ? {
+                id: question._id,
+                difficulty: question.difficulty,
+                text: question.text?.substring(0, 30) + '...',
+                correctAnswer: question.correctAnswer
+              } : 'NOT FOUND');
+              
+              if (question && question.difficulty) {
+                const difficulty = question.difficulty;
+                difficultyStats[difficulty].totalAnswers++;
+                
+                // Find the correct answer from options
+                let isCorrect = false;
+                if (question.correctAnswer) {
+                  // If correctAnswer is directly stored
+                  isCorrect = answer.selectedOption === question.correctAnswer;
+                } else if (question.options && Array.isArray(question.options)) {
+                  // Find correct option from options array
+                  const correctOption = question.options.find(opt => opt.isCorrect === true);
+                  if (correctOption) {
+                    isCorrect = answer.selectedOption === correctOption.text;
+                  }
+                }
+                
+                console.log(`  Checking correctness: selectedOption="${answer.selectedOption}", correctAnswer="${question.correctAnswer}", isCorrect=${isCorrect}`);
+                
+                if (isCorrect) {
+                  difficultyStats[difficulty].correctAnswers++;
+                }
+                console.log(`  Updated stats for ${difficulty}:`, difficultyStats[difficulty]);
+              }
             }
           });
         }
       });
-    } else if (dpp.type === 'file' && dpp.assignmentFiles) {
+
+      // Calculate percentages for MCQ difficulty performance
+      Object.keys(difficultyPerformance).forEach(difficulty => {
+        const stats = difficultyStats[difficulty];
+        if (stats.totalAnswers > 0) {
+          difficultyPerformance[difficulty].avg = (stats.correctAnswers / stats.totalAnswers) * 100;
+          difficultyPerformance[difficulty].count = stats.totalAnswers;
+        } else {
+          difficultyPerformance[difficulty].avg = 0;
+          difficultyPerformance[difficulty].count = 0;
+        }
+      });
+
+      console.log('MCQ Difficulty Stats:', difficultyStats);
+      console.log('MCQ Performance:', difficultyPerformance);
+
+    } else if (dpp.type === 'file' && dpp.assignmentFiles && dpp.assignmentFiles.length > 0) {
+      // FILE TYPE ANALYSIS
+      console.log('Analyzing File type DPP');
+      
+      // Calculate difficulty distribution from assignment files
       difficultyDistribution = dpp.assignmentFiles.reduce((acc, f) => {
         acc[f.difficulty] = (acc[f.difficulty] || 0) + 1;
         return acc;
       }, { easy: 0, medium: 0, hard: 0 });
+
+      // For file submissions, we can calculate performance based on scores
+      // Since file submissions don't have individual answer tracking like MCQ,
+      // we'll calculate performance based on overall submission scores
+      const difficultyScores = {
+        easy: { totalScore: 0, maxScore: 0, submissions: 0 },
+        medium: { totalScore: 0, maxScore: 0, submissions: 0 },
+        hard: { totalScore: 0, maxScore: 0, submissions: 0 }
+      };
+
+      // For file type, we'll use overall difficulty or distribute evenly
+      if (dpp.overallDifficulty) {
+        // If there's an overall difficulty, attribute all submissions to that difficulty
+        dpp.submissions.forEach(submission => {
+          const difficulty = dpp.overallDifficulty;
+          difficultyScores[difficulty].totalScore += submission.score || 0;
+          difficultyScores[difficulty].maxScore += submission.maxScore || dpp.maxScore;
+          difficultyScores[difficulty].submissions++;
+        });
+      } else {
+        // If no overall difficulty, distribute based on assignment files difficulty
+        dpp.submissions.forEach(submission => {
+          // For simplicity, we'll use the first assignment file's difficulty
+          // or distribute evenly across all difficulties
+          const firstFileDifficulty = dpp.assignmentFiles[0]?.difficulty || 'medium';
+          difficultyScores[firstFileDifficulty].totalScore += submission.score || 0;
+          difficultyScores[firstFileDifficulty].maxScore += submission.maxScore || dpp.maxScore;
+          difficultyScores[firstFileDifficulty].submissions++;
+        });
+      }
+
+      // Calculate percentages for file difficulty performance
+      Object.keys(difficultyPerformance).forEach(difficulty => {
+        const stats = difficultyScores[difficulty];
+        if (stats.submissions > 0 && stats.maxScore > 0) {
+          difficultyPerformance[difficulty].avg = (stats.totalScore / stats.maxScore) * 100;
+          difficultyPerformance[difficulty].count = stats.submissions;
+        } else {
+          difficultyPerformance[difficulty].avg = 0;
+          difficultyPerformance[difficulty].count = 0;
+        }
+      });
+
+      console.log('File Difficulty Scores:', difficultyScores);
+      console.log('File Performance:', difficultyPerformance);
     }
 
-    // Calculate average for difficulty performance
-    Object.keys(difficultyPerformance).forEach(difficulty => {
-      if (difficultyPerformance[difficulty].count > 0) {
-        difficultyPerformance[difficulty].avg = 
-          difficultyPerformance[difficulty].avg / difficultyPerformance[difficulty].count;
-      }
-    });
 
+
+    // Calculate statistics directly from submissions
+    const submissionCount = dpp.submissions.length;
+    const onTimeSubmissions = dpp.submissions.filter(sub => !sub.isLate).length;
+    const lateSubmissions = submissionCount - onTimeSubmissions;
+    
+    // Calculate average score
+    const totalScore = dpp.submissions.reduce((sum, sub) => sum + (sub.score || 0), 0);
+    const totalPossibleScore = submissionCount * dpp.maxScore;
+    const averageScore = submissionCount > 0 && totalPossibleScore > 0 
+      ? (totalScore / totalPossibleScore) * 100 
+      : 0;
+    
     // Calculate top score
     const topScore = dpp.submissions.length > 0 
       ? Math.max(...dpp.submissions.map(s => s.score || 0))
@@ -850,11 +1032,11 @@ const getDPPAnalytics = async (req, res) => {
       })),
       stats: {
         totalStudents,
-        submissionCount: dpp.submissionCount || 0,
-        submissionRate: totalStudents > 0 ? ((dpp.submissionCount || 0) / totalStudents) * 100 : 0,
-        averageScore: dpp.averageScore || 0,
-        onTimeSubmissions: dpp.onTimeSubmissionCount || 0,
-        lateSubmissions: (dpp.submissionCount || 0) - (dpp.onTimeSubmissionCount || 0),
+        submissionCount,
+        submissionRate: totalStudents > 0 ? (submissionCount / totalStudents) * 100 : 0,
+        averageScore,
+        onTimeSubmissions,
+        lateSubmissions,
         topScore,
         difficultyPerformance
       }
@@ -870,6 +1052,224 @@ const getDPPAnalytics = async (req, res) => {
   }
 };
 
+/**
+ * Get a specific submission (for teachers and students)
+ */
+const getSubmission = async (req, res) => {
+  try {
+    const { dppId, submissionId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    const dpp = await DailyPracticeProblem.findById(dppId)
+      .populate('teacher', 'name email')
+      .populate('classroom', 'name subject')
+      .populate('submissions.student', 'name email');
+
+    if (!dpp) {
+      return res.status(404).json({
+        success: false,
+        error: 'DPP not found'
+      });
+    }
+
+    // Check access permissions
+    let hasAccess = false;
+    if (userRole === 'teacher') {
+      hasAccess = dpp.teacher._id.toString() === userId;
+    } else {
+      // Check if student is in the classroom
+      const classroom = await Classroom.findOne({
+        _id: dpp.classroom._id,
+        'students.student': userId
+      });
+      hasAccess = !!classroom;
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have access to this DPP'
+      });
+    }
+
+    // Find the specific submission
+    const submission = dpp.submissions.find(sub => sub._id.toString() === submissionId);
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        error: 'Submission not found'
+      });
+    }
+
+    // If student, ensure they can only view their own submission
+    if (userRole === 'student' && submission.student._id.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only view your own submission'
+      });
+    }
+
+    // Calculate detailed answers for MCQ
+    let detailedAnswers = null;
+    if (dpp.type === 'mcq' && submission.answers) {
+      detailedAnswers = submission.answers.map((answer, index) => {
+        const question = dpp.questions[index];
+        if (question) {
+          const correctOption = question.options.find(opt => opt.isCorrect);
+          const isCorrect = correctOption && correctOption.text === answer.selectedOption;
+          return {
+            questionIndex: answer.questionIndex,
+            selectedOption: answer.selectedOption,
+            isCorrect,
+            earnedMarks: isCorrect ? (question.marks || 1) : 0
+          };
+        }
+        return answer;
+      });
+    }
+
+    // Build submission response
+    const submissionData = {
+      _id: submission._id,
+      student: {
+        _id: submission.student._id,
+        name: submission.student.name,
+        email: submission.student.email
+      },
+      dpp: {
+        _id: dpp._id,
+        title: dpp.title,
+        description: dpp.description,
+        type: dpp.type,
+        maxScore: dpp.maxScore,
+        questions: dpp.questions,
+        assignmentFiles: dpp.assignmentFiles
+      },
+      answers: detailedAnswers,
+      files: submission.files,
+      score: submission.score,
+      maxScore: submission.maxScore || dpp.maxScore,
+      isLate: submission.isLate,
+      submittedAt: submission.submittedAt,
+      feedback: submission.feedback,
+      gradeOverride: submission.gradeOverride
+    };
+
+    res.json({
+      success: true,
+      submission: submissionData
+    });
+  } catch (error) {
+    console.error('Error fetching submission:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch submission'
+    });
+  }
+};
+
+/**
+ * Get student's own submission
+ */
+const getMySubmission = async (req, res) => {
+  try {
+    const { dppId } = req.params;
+    const studentId = req.user.id;
+
+    const dpp = await DailyPracticeProblem.findById(dppId)
+      .populate('teacher', 'name email')
+      .populate('classroom', 'name subject')
+      .populate('submissions.student', 'name email');
+
+    if (!dpp) {
+      return res.status(404).json({
+        success: false,
+        error: 'DPP not found'
+      });
+    }
+
+    // Verify student is in the classroom
+    const classroom = await Classroom.findOne({
+      _id: dpp.classroom._id,
+      'students.student': studentId
+    });
+
+    if (!classroom) {
+      return res.status(403).json({
+        success: false,
+        error: 'You are not enrolled in this classroom'
+      });
+    }
+
+    // Find student's submission
+    const submission = dpp.submissions.find(sub => sub.student._id.toString() === studentId);
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        error: 'No submission found'
+      });
+    }
+
+    // Calculate detailed answers for MCQ
+    let detailedAnswers = null;
+    if (dpp.type === 'mcq' && submission.answers) {
+      detailedAnswers = submission.answers.map((answer, index) => {
+        const question = dpp.questions[index];
+        if (question) {
+          const correctOption = question.options.find(opt => opt.isCorrect);
+          const isCorrect = correctOption && correctOption.text === answer.selectedOption;
+          return {
+            questionIndex: answer.questionIndex,
+            selectedOption: answer.selectedOption,
+            isCorrect,
+            earnedMarks: isCorrect ? (question.marks || 1) : 0
+          };
+        }
+        return answer;
+      });
+    }
+
+    // Build submission response
+    const submissionData = {
+      _id: submission._id,
+      student: {
+        _id: submission.student._id,
+        name: submission.student.name,
+        email: submission.student.email
+      },
+      dpp: {
+        _id: dpp._id,
+        title: dpp.title,
+        description: dpp.description,
+        type: dpp.type,
+        maxScore: dpp.maxScore,
+        questions: dpp.questions,
+        assignmentFiles: dpp.assignmentFiles
+      },
+      answers: detailedAnswers,
+      files: submission.files,
+      score: submission.score,
+      maxScore: submission.maxScore || dpp.maxScore,
+      isLate: submission.isLate,
+      submittedAt: submission.submittedAt,
+      feedback: submission.feedback,
+      gradeOverride: submission.gradeOverride
+    };
+
+    res.json({
+      success: true,
+      submission: submissionData
+    });
+  } catch (error) {
+    console.error('Error fetching student submission:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch submission'
+    });
+  }
+};
+
 module.exports = {
   createDPP,
   getClassroomDPPs,
@@ -880,5 +1280,7 @@ module.exports = {
   submitMCQAnswers,
   submitFiles,
   gradeSubmission,
-  getDPPAnalytics
+  getDPPAnalytics,
+  getSubmission,
+  getMySubmission
 };

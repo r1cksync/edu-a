@@ -18,6 +18,7 @@ interface AttemptDPPProps {
   dppId: string
   onClose: () => void
   onSuccess: () => void
+  onViewSubmission?: (submissionId: string) => void
 }
 
 interface MCQAnswer {
@@ -52,7 +53,7 @@ interface DPPData {
   maxFileSize?: number
 }
 
-export function AttemptDPP({ dppId, onClose, onSuccess }: AttemptDPPProps) {
+export function AttemptDPP({ dppId, onClose, onSuccess, onViewSubmission }: AttemptDPPProps) {
   const [mcqAnswers, setMCQAnswers] = useState<MCQAnswer[]>([])
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -69,9 +70,13 @@ export function AttemptDPP({ dppId, onClose, onSuccess }: AttemptDPPProps) {
 
   const submitMCQMutation = useMutation({
     mutationFn: (answers: MCQAnswer[]) => apiClient.submitMCQAnswers(dppId, answers),
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['dpp'] })
-      onSuccess()
+      if (onViewSubmission && data.submission?._id) {
+        onViewSubmission(data.submission._id)
+      } else {
+        onSuccess()
+      }
     }
   })
 
@@ -83,9 +88,13 @@ export function AttemptDPP({ dppId, onClose, onSuccess }: AttemptDPPProps) {
       })
       return apiClient.submitDPPFiles(dppId, formData)
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['dpp'] })
-      onSuccess()
+      if (onViewSubmission && data.submission?._id) {
+        onViewSubmission(data.submission._id)
+      } else {
+        onSuccess()
+      }
     }
   })
 

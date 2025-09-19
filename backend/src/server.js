@@ -15,6 +15,7 @@ const quizRoutes = require('./routes/quizRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const engagementRoutes = require('./routes/engagementRoutes');
 const dppRoutes = require('./routes/dppRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -29,6 +30,9 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Serve static files for uploads (when not using S3)
+app.use('/uploads', express.static('uploads'));
 
 // Database connection (only connect if not in test mode)
 if (process.env.NODE_ENV !== 'test') {
@@ -56,6 +60,7 @@ app.use('/api/quizzes', quizRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/engagement', engagementRoutes);
 app.use('/api/dpp', dppRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

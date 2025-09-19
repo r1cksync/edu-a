@@ -890,6 +890,14 @@ class ApiClient {
   async getDPPAnalytics(dppId: string) {
     return this.request(`/dpp/${dppId}/analytics`)
   }
+
+  async getSubmission(dppId: string, submissionId: string) {
+    return this.request(`/dpp/${dppId}/submissions/${submissionId}`)
+  }
+
+  async getMySubmission(dppId: string) {
+    return this.request(`/dpp/${dppId}/my-submission`)
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)

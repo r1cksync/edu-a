@@ -11,7 +11,9 @@ const {
   submitMCQAnswers,
   submitFiles,
   gradeSubmission,
-  getDPPAnalytics
+  getDPPAnalytics,
+  getSubmission,
+  getMySubmission
 } = require('../controllers/dppController');
 
 // All routes require authentication
@@ -24,6 +26,10 @@ router.delete('/:dppId', requireTeacher, deleteDPP);
 router.patch('/:dppId/publish', requireTeacher, togglePublishDPP);
 router.put('/:dppId/submissions/:submissionId/grade', requireTeacher, gradeSubmission);
 router.get('/:dppId/analytics', requireTeacher, getDPPAnalytics);
+
+// Submission viewing routes
+router.get('/:dppId/submissions/:submissionId', auth, getSubmission);
+router.get('/:dppId/my-submission', requireStudent, getMySubmission);
 
 // Routes accessible by both teachers and students
 router.get('/classroom/:classroomId', getClassroomDPPs);

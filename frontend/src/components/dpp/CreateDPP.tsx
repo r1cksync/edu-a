@@ -32,7 +32,8 @@ interface MCQQuestion {
 
 interface AssignmentFile {
   fileName: string
-  fileUrl: string
+  fileUrl?: string // Optional for existing files
+  file?: File // New field for uploaded files
   difficulty: 'easy' | 'medium' | 'hard'
   description: string
   points: number
@@ -73,11 +74,23 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
   const [newTag, setNewTag] = useState('')
   const [currentAssignmentFile, setCurrentAssignmentFile] = useState<AssignmentFile>({
     fileName: '',
-    fileUrl: '',
     difficulty: 'medium',
     description: '',
     points: 10
   })
+  const [uploadingFile, setUploadingFile] = useState(false)
+
+  // Handle file upload for assignment files
+  const handleAssignmentFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setCurrentAssignmentFile(prev => ({
+        ...prev,
+        file,
+        fileName: prev.fileName || file.name.split('.')[0] // Use filename if no custom name provided
+      }))
+    }
+  }
   const queryClient = useQueryClient()
 
   const createMutation = useMutation({
@@ -100,7 +113,7 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
     }
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!dppData.title.trim()) {
@@ -128,7 +141,44 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
       return
     }
 
-    createMutation.mutate(dppData)
+    // If file type DPP, upload files first
+    let processedDppData = { ...dppData }
+    
+    if (dppData.type === 'file') {
+      setUploadingFile(true)
+      try {
+        const uploadedFiles = await Promise.all(
+          dppData.assignmentFiles.map(async (file) => {
+            if (file.file) {
+              // Upload file to S3
+              const uploadResult = await apiClient.uploadFile(file.file, 'dpp-assignments')
+              console.log('Upload result:', uploadResult)
+              return {
+                ...file,
+                fileUrl: uploadResult.file.url, // Fixed: access uploadResult.file.url
+                file: undefined // Remove file object before sending to backend
+              }
+            }
+            return file // Already has fileUrl (existing file)
+          })
+        )
+        
+        processedDppData = {
+          ...dppData,
+          assignmentFiles: uploadedFiles
+        }
+      } catch (error) {
+        console.error('Error uploading files:', error)
+        alert('Failed to upload files. Please try again.')
+        setUploadingFile(false)
+        return
+      } finally {
+        setUploadingFile(false)
+      }
+    }
+
+    console.log('Final DPP data being sent:', processedDppData)
+    createMutation.mutate(processedDppData)
   }
 
   const addQuestion = () => {
@@ -175,7 +225,8 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
   }
 
   const addAssignmentFile = () => {
-    if (!currentAssignmentFile.fileName.trim() || !currentAssignmentFile.fileUrl.trim()) {
+    if (!currentAssignmentFile.fileName.trim() || !currentAssignmentFile.file) {
+      alert('Please provide a file name and select a file')
       return
     }
 
@@ -187,7 +238,6 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
     // Reset current assignment file
     setCurrentAssignmentFile({
       fileName: '',
-      fileUrl: '',
       difficulty: 'medium',
       description: '',
       points: 10
@@ -548,7 +598,12 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
           {/* File Submission Settings */}
           {dppData.type === 'file' && (
             <div className="space-y-6 border-t pt-6">
-              <h3 className="text-lg font-medium text-gray-900">Assignment Files & Settings</h3>
+              <h3 className="text-lg font-medium text-gray-900">
+                Assignment Files & Settings 
+                <span className="text-sm text-gray-500 ml-2">
+                  ({dppData.assignmentFiles.length} files added)
+                </span>
+              </h3>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -583,22 +638,40 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
                       <p className="text-gray-600">{file.fileName}</p>
                     </div>
                     <div>
+                      <p className="text-sm font-medium text-gray-700">File Type:</p>
+                      <p className="text-gray-600">
+                        {file.file ? (
+                          <span className="text-green-600">
+                            <Upload className="h-4 w-4 inline mr-1" />
+                            {file.file.name}
+                          </span>
+                        ) : file.fileUrl ? (
+                          <span className="text-blue-600">URL Link</span>
+                        ) : (
+                          <span className="text-gray-400">No file</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div>
                       <p className="text-sm font-medium text-gray-700">Points:</p>
                       <p className="text-gray-600">{file.points}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Difficulty:</p>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                        ${file.difficulty === 'easy' ? 'bg-green-100 text-green-800' : 
+                          file.difficulty === 'hard' ? 'bg-red-100 text-red-800' : 
+                          'bg-yellow-100 text-yellow-800'}`}>
+                        <Target className="h-3 w-3 mr-1" />
+                        {file.difficulty}
+                      </span>
                     </div>
                   </div>
                   <div className="mt-2">
                     <p className="text-sm font-medium text-gray-700">Description:</p>
                     <p className="text-gray-600">{file.description || 'No description'}</p>
-                  </div>
-                  <div className="mt-2">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                      ${file.difficulty === 'easy' ? 'bg-green-100 text-green-800' : 
-                        file.difficulty === 'hard' ? 'bg-red-100 text-red-800' : 
-                        'bg-yellow-100 text-yellow-800'}`}>
-                      <Target className="h-3 w-3 mr-1" />
-                      {file.difficulty}
-                    </span>
                   </div>
                 </div>
               ))}
@@ -624,15 +697,23 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
                     
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        File URL *
+                        <Upload className="h-4 w-4 inline mr-1" />
+                        Upload Assignment File *
                       </label>
                       <input
-                        type="url"
-                        value={currentAssignmentFile.fileUrl}
-                        onChange={(e) => setCurrentAssignmentFile(prev => ({ ...prev, fileUrl: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        placeholder="https://drive.google.com/..."
+                        type="file"
+                        onChange={handleAssignmentFileUpload}
+                        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.jpg,.jpeg,.png"
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
                       />
+                      {currentAssignmentFile.file && (
+                        <p className="text-xs text-green-600 mt-1">
+                          Selected: {currentAssignmentFile.file.name}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Supported: PDF, DOC, PPT, XLS, images, and text files
+                      </p>
                     </div>
                   </div>
 
@@ -741,13 +822,13 @@ export function CreateDPP({ classroomId, videoClasses, onClose, onSuccess }: Cre
             </button>
             <button
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || uploadingFile}
               className="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-purple-400 flex items-center"
             >
-              {createMutation.isPending ? (
+              {createMutation.isPending || uploadingFile ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Creating...
+                  {uploadingFile ? 'Uploading Files...' : 'Creating...'}
                 </>
               ) : (
                 <>

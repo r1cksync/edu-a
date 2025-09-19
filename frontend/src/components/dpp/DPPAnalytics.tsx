@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import { 
-  BarChart3, 
+  BarChart3,
   Users, 
   TrendingUp, 
   Clock, 
@@ -20,6 +20,7 @@ import {
 interface DPPAnalyticsProps {
   dppId: string
   onClose: () => void
+  onViewSubmission?: (submissionId: string) => void
 }
 
 interface Analytics {
@@ -75,7 +76,7 @@ interface Analytics {
   }
 }
 
-export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
+export function DPPAnalytics({ dppId, onClose, onViewSubmission }: DPPAnalyticsProps) {
   const { data: analytics, isLoading, error } = useQuery<Analytics>({
     queryKey: ['dpp-analytics', dppId],
     queryFn: async () => {
@@ -133,7 +134,13 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
     )
   }
 
-  const { dpp, submissions, stats } = analytics
+  const { dpp, submissions = [], stats } = analytics
+
+  // Helper function to safely format numbers
+  const safeToFixed = (value: any, decimals: number = 1): string => {
+    const num = typeof value === 'number' ? value : 0
+    return num.toFixed(decimals)
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -175,8 +182,8 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-blue-600">Submission Rate</p>
-                  <p className="text-2xl font-bold text-blue-900">{stats.submissionRate.toFixed(1)}%</p>
-                  <p className="text-xs text-blue-700">{stats.submissionCount}/{stats.totalStudents} students</p>
+                  <p className="text-2xl font-bold text-blue-900">{safeToFixed(stats?.submissionRate)}%</p>
+                  <p className="text-xs text-blue-700">{stats?.submissionCount || 0}/{stats?.totalStudents || 0} students</p>
                 </div>
                 <Users className="h-8 w-8 text-blue-500" />
               </div>
@@ -186,7 +193,7 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-green-600">Average Score</p>
-                  <p className="text-2xl font-bold text-green-900">{stats.averageScore.toFixed(1)}%</p>
+                  <p className="text-2xl font-bold text-green-900">{safeToFixed(stats?.averageScore)}%</p>
                   <p className="text-xs text-green-700">out of {dpp.maxScore} points</p>
                 </div>
                 <Award className="h-8 w-8 text-green-500" />
@@ -197,7 +204,7 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-yellow-600">Top Score</p>
-                  <p className="text-2xl font-bold text-yellow-900">{stats.topScore}</p>
+                  <p className="text-2xl font-bold text-yellow-900">{stats?.topScore || 0}</p>
                   <p className="text-xs text-yellow-700">highest submission</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-yellow-500" />
@@ -208,8 +215,8 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-purple-600">On Time</p>
-                  <p className="text-2xl font-bold text-purple-900">{stats.onTimeSubmissions}</p>
-                  <p className="text-xs text-purple-700">{stats.lateSubmissions} late</p>
+                  <p className="text-2xl font-bold text-purple-900">{stats?.onTimeSubmissions || 0}</p>
+                  <p className="text-xs text-purple-700">{stats?.lateSubmissions || 0} late</p>
                 </div>
                 <Clock className="h-8 w-8 text-purple-500" />
               </div>
@@ -224,14 +231,14 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
                 Performance by Difficulty
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {Object.entries(stats.difficultyPerformance).map(([difficulty, data]) => {
+                {Object.entries(stats?.difficultyPerformance || {}).map(([difficulty, data]) => {
                   const performanceData = data as { avg: number; count: number }
                   return (
                     <div key={difficulty} className="text-center">
                       <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mb-2 ${getDifficultyColor(difficulty)}`}>
                         {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
                       </div>
-                      <p className="text-2xl font-bold text-gray-900">{performanceData.avg.toFixed(1)}%</p>
+                      <p className="text-2xl font-bold text-gray-900">{safeToFixed(performanceData?.avg)}%</p>
                       <p className="text-sm text-gray-600">{performanceData.count} questions/files</p>
                     </div>
                   )
@@ -288,7 +295,7 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
           <div className="bg-white border rounded-lg">
             <div className="p-4 border-b">
               <h3 className="text-lg font-medium text-gray-900 flex items-center justify-between">
-                Submissions ({submissions.length})
+                Submissions ({submissions?.length || 0})
                 <button className="flex items-center px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700">
                   <Download className="h-4 w-4 mr-1" />
                   Export
@@ -318,7 +325,7 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {submissions.map((submission: any) => {
+                  {(submissions || []).map((submission: any) => {
                     const percentage = (submission.score / submission.maxScore) * 100
                     return (
                       <tr key={submission._id} className="hover:bg-gray-50">
@@ -338,7 +345,7 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
                               {submission.score}/{submission.maxScore}
                             </span>
                             <span className={`ml-2 text-xs ${getGradeColor(percentage)}`}>
-                              ({percentage.toFixed(1)}%)
+                              ({safeToFixed(percentage)}%)
                             </span>
                           </div>
                         </td>
@@ -368,10 +375,15 @@ export function DPPAnalytics({ dppId, onClose }: DPPAnalyticsProps) {
                           </div>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <button className="text-purple-600 hover:text-purple-900 text-sm font-medium flex items-center">
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </button>
+                          <div className="flex space-x-2">
+                            <button 
+                              onClick={() => onViewSubmission?.(submission._id)}
+                              className="text-purple-600 hover:text-purple-900 text-sm font-medium flex items-center"
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              {analytics.dpp.type === 'file' ? 'Grade' : 'View'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )

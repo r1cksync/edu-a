@@ -24,6 +24,7 @@ import {
 import { CreateDPP } from './CreateDPP'
 import { AttemptDPP } from './AttemptDPP'
 import { DPPAnalytics } from './DPPAnalytics'
+import { ViewSubmission } from './ViewSubmission'
 
 interface DPPListProps {
   classroomId: string
@@ -74,6 +75,7 @@ export function DPPList({ classroomId, videoClasses }: DPPListProps) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedDPP, setSelectedDPP] = useState<string | null>(null)
   const [analyticsSelectedDPP, setAnalyticsSelectedDPP] = useState<string | null>(null)
+  const [viewSubmissionData, setViewSubmissionData] = useState<{dppId: string, submissionId?: string} | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'overdue' | 'completed'>('all')
   const [typeFilter, setTypeFilter] = useState<'all' | 'mcq' | 'file'>('all')
   
@@ -393,7 +395,7 @@ export function DPPList({ classroomId, videoClasses }: DPPListProps) {
                       
                       {dpp.hasSubmitted && (
                         <button
-                          onClick={() => setSelectedDPP(`view-${dpp._id}`)}
+                          onClick={() => setViewSubmissionData({ dppId: dpp._id })}
                           className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium"
                         >
                           View Submission
@@ -525,6 +527,10 @@ export function DPPList({ classroomId, videoClasses }: DPPListProps) {
             setSelectedDPP(null)
             queryClient.invalidateQueries({ queryKey: ['dpp', classroomId] })
           }}
+          onViewSubmission={(submissionId) => {
+            setSelectedDPP(null)
+            setViewSubmissionData({ dppId: selectedDPP.replace('attempt-', ''), submissionId })
+          }}
         />
       )}
 
@@ -533,6 +539,19 @@ export function DPPList({ classroomId, videoClasses }: DPPListProps) {
         <DPPAnalytics
           dppId={analyticsSelectedDPP}
           onClose={() => setAnalyticsSelectedDPP(null)}
+          onViewSubmission={(submissionId) => {
+            setAnalyticsSelectedDPP(null)
+            setViewSubmissionData({ dppId: analyticsSelectedDPP, submissionId })
+          }}
+        />
+      )}
+
+      {/* View Submission Modal */}
+      {viewSubmissionData && (
+        <ViewSubmission
+          dppId={viewSubmissionData.dppId}
+          submissionId={viewSubmissionData.submissionId}
+          onClose={() => setViewSubmissionData(null)}
         />
       )}
     </div>
