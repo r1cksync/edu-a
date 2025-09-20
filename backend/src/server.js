@@ -16,6 +16,7 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 const engagementRoutes = require('./routes/engagementRoutes');
 const dppRoutes = require('./routes/dppRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
+const aiRoutes = require('./routes/aiRoutes');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -61,6 +62,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/engagement', engagementRoutes);
 app.use('/api/dpp', dppRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

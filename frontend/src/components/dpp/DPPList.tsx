@@ -19,9 +19,13 @@ import {
   BarChart3,
   Plus,
   Filter,
-  Target
+  Target,
+  Brain,
+  Sparkles,
+  ChevronDown
 } from 'lucide-react'
 import { CreateDPP } from './CreateDPP'
+import { CreateAIDPP } from './CreateAIDPP'
 import { AttemptDPP } from './AttemptDPP'
 import { DPPAnalytics } from './DPPAnalytics'
 import { ViewSubmission } from './ViewSubmission'
@@ -73,6 +77,7 @@ interface DPP {
 
 export function DPPList({ classroomId, videoClasses }: DPPListProps) {
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showAICreateModal, setShowAICreateModal] = useState(false)
   const [selectedDPP, setSelectedDPP] = useState<string | null>(null)
   const [analyticsSelectedDPP, setAnalyticsSelectedDPP] = useState<string | null>(null)
   const [viewSubmissionData, setViewSubmissionData] = useState<{dppId: string, submissionId?: string} | null>(null)
@@ -187,13 +192,23 @@ export function DPPList({ classroomId, videoClasses }: DPPListProps) {
         </div>
 
         {user?.role === 'teacher' && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Create DPP
-          </button>
+          <div className="flex space-x-3">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create DPP
+            </button>
+            <button
+              onClick={() => setShowAICreateModal(true)}
+              className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200"
+            >
+              <Brain className="h-4 w-4 mr-2" />
+              <Sparkles className="h-4 w-4 mr-1" />
+              AI Generate
+            </button>
+          </div>
         )}
       </div>
 
@@ -552,6 +567,19 @@ export function DPPList({ classroomId, videoClasses }: DPPListProps) {
           dppId={viewSubmissionData.dppId}
           submissionId={viewSubmissionData.submissionId}
           onClose={() => setViewSubmissionData(null)}
+        />
+      )}
+
+      {/* AI Create DPP Modal */}
+      {showAICreateModal && (
+        <CreateAIDPP
+          classroomId={classroomId}
+          videoClasses={videoClasses}
+          onClose={() => setShowAICreateModal(false)}
+          onSuccess={() => {
+            setShowAICreateModal(false)
+            queryClient.invalidateQueries({ queryKey: ['dpp', classroomId] })
+          }}
         />
       )}
     </div>

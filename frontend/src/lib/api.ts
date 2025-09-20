@@ -898,6 +898,46 @@ class ApiClient {
   async getMySubmission(dppId: string) {
     return this.request(`/dpp/${dppId}/my-submission`)
   }
+
+  // AI endpoints
+  async generateMCQQuestions(data: {
+    topics: string
+    numberOfQuestions: number
+    difficulty?: 'easy' | 'medium' | 'hard'
+  }) {
+    return this.request('/ai/generate/mcq', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async generateMCQQuestionsFromPDF(formData: FormData) {
+    const { token } = useAuthStore.getState()
+    const response = await fetch(`${this.baseUrl}/ai/generate/mcq/pdf`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  async previewAIQuestions(data: {
+    questions: any[]
+    metadata: any
+  }) {
+    return this.request('/ai/preview', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)
