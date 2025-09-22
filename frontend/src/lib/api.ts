@@ -938,6 +938,61 @@ class ApiClient {
       body: JSON.stringify(data)
     })
   }
+
+  // Refresher endpoints
+  async getRefresherHistory(classroomId: string) {
+    return this.request(`/refresher/classroom/${classroomId}/history`)
+  }
+
+  async getAvailableDPPsForRefresher(classroomId: string) {
+    return this.request(`/refresher/classroom/${classroomId}/available-dpps`)
+  }
+
+  async startRefresherSession(classroomId: string, data: {
+    submissionId: string
+    questionsPerBatch: number
+  }) {
+    return this.request(`/refresher/classroom/${classroomId}/start`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async getRefresherSession(sessionId: string) {
+    return this.request(`/refresher/session/${sessionId}`)
+  }
+
+  async submitRefresherBatch(sessionId: string, data: {
+    answers: Array<{
+      selectedOption: number
+      timeSpent?: number
+    }>
+  }) {
+    return this.request(`/refresher/session/${sessionId}/submit-batch`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async generateMoreRefresherQuestions(sessionId: string, data: {
+    questionsCount: number
+  }) {
+    return this.request(`/refresher/session/${sessionId}/generate-more`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async concludeRefresherSession(sessionId: string) {
+    return this.request(`/refresher/session/${sessionId}/conclude`, {
+      method: 'POST'
+    })
+  }
+
+  // Generic GET method for backward compatibility
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request(endpoint)
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)

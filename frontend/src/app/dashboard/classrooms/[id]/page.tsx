@@ -23,7 +23,8 @@ import {
   BookOpen,
   Video,
   Brain,
-  Target
+  Target,
+  RefreshCw
 } from 'lucide-react'
 import Link from 'next/link'
 import ClassroomPosts from '@/components/classroom/posts'
@@ -35,6 +36,7 @@ import StudentVideoClasses from '@/components/video-classes/student-video-classe
 import TeacherQuizzes from '@/components/quizzes/teacher-quizzes'
 import StudentQuizzes from '@/components/quizzes/student-quizzes'
 import { DPPList } from '@/components/dpp/DPPList'
+import RefresherMain from '@/components/refresher/RefresherMain'
 
 export default function ClassroomPage() {
   const params = useParams()
@@ -190,7 +192,7 @@ export default function ClassroomPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`grid w-full ${isOwner ? 'grid-cols-7' : 'grid-cols-6'}`}>
+          <TabsList className={`grid w-full ${isOwner ? 'grid-cols-8' : 'grid-cols-7'}`}>
             <TabsTrigger value="posts" className="flex items-center space-x-2">
               <MessageSquare className="h-4 w-4" />
               <span>Posts</span>
@@ -202,6 +204,10 @@ export default function ClassroomPage() {
             <TabsTrigger value="dpp" className="flex items-center space-x-2">
               <Target className="h-4 w-4" />
               <span>DPP</span>
+            </TabsTrigger>
+            <TabsTrigger value="refresher" className="flex items-center space-x-2">
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresher</span>
             </TabsTrigger>
             <TabsTrigger value="quizzes" className="flex items-center space-x-2">
               <Brain className="h-4 w-4" />
@@ -236,6 +242,10 @@ export default function ClassroomPage() {
               classroomId={classroomId} 
               videoClasses={(videoClasses as any)?.classes || []} 
             />
+          </TabsContent>
+
+          <TabsContent value="refresher" className="space-y-6">
+            <RefresherMain classroomId={classroomId} isTeacher={isTeacher} />
           </TabsContent>
 
           <TabsContent value="quizzes" className="space-y-6">{isTeacher ? (
