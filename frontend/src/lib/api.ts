@@ -989,6 +989,30 @@ class ApiClient {
     })
   }
 
+  // Calendar endpoints
+  async getCalendarEvents(params?: {
+    startDate?: string
+    endDate?: string
+    classroomId?: string
+  }) {
+    const queryParams = new URLSearchParams()
+    if (params?.startDate) queryParams.append('startDate', params.startDate)
+    if (params?.endDate) queryParams.append('endDate', params.endDate)
+    if (params?.classroomId) queryParams.append('classroomId', params.classroomId)
+    
+    const query = queryParams.toString()
+    return this.request(`/calendar/events${query ? `?${query}` : ''}`)
+  }
+
+  async getUpcomingEvents(limit?: number) {
+    const query = limit ? `?limit=${limit}` : ''
+    return this.request(`/calendar/upcoming${query}`)
+  }
+
+  async getEventsForDate(date: string) {
+    return this.request(`/calendar/date/${date}`)
+  }
+
   // Generic GET method for backward compatibility
   async get<T>(endpoint: string): Promise<T> {
     return this.request(endpoint)
