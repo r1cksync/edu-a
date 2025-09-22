@@ -15,3 +15,5 @@ export function Progress({ value, className = '' }: ProgressProps) {
     </div>
   )
 }
+
+export default Progress
