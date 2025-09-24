@@ -19,6 +19,8 @@ const uploadRoutes = require('./routes/uploadRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const refresherRoutes = require('./routes/refresherRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
+const screeningTestRoutes = require('./routes/screeningTestRoutes');
+const questionRoutes = require('./routes/questionRoutes');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -67,6 +69,8 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/refresher', refresherRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/screening-tests', screeningTestRoutes);
+app.use('/api/questions', questionRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

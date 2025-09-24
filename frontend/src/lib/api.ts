@@ -1013,9 +1013,29 @@ class ApiClient {
     return this.request(`/calendar/date/${date}`)
   }
 
-  // Generic GET method for backward compatibility
+  // Generic methods for backward compatibility
   async get<T>(endpoint: string): Promise<T> {
     return this.request(endpoint)
+  }
+
+  async post<T>(endpoint: string, data: any): Promise<T> {
+    return this.request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async put<T>(endpoint: string, data: any): Promise<T> {
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request(endpoint, {
+      method: 'DELETE'
+    })
   }
 }
 

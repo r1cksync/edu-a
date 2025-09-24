@@ -24,7 +24,8 @@ import {
   Video,
   Brain,
   Target,
-  RefreshCw
+  RefreshCw,
+  Shield
 } from 'lucide-react'
 import Link from 'next/link'
 import ClassroomPosts from '@/components/classroom/posts'
@@ -37,6 +38,7 @@ import TeacherQuizzes from '@/components/quizzes/teacher-quizzes'
 import StudentQuizzes from '@/components/quizzes/student-quizzes'
 import { DPPList } from '@/components/dpp/DPPList'
 import RefresherMain from '@/components/refresher/RefresherMain'
+import ScreeningTestList from '@/components/screening-tests/ScreeningTestList'
 
 export default function ClassroomPage() {
   const params = useParams()
@@ -192,7 +194,7 @@ export default function ClassroomPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`grid w-full ${isOwner ? 'grid-cols-8' : 'grid-cols-7'}`}>
+          <TabsList className={`grid w-full ${isOwner ? 'grid-cols-9' : 'grid-cols-8'}`}>
             <TabsTrigger value="posts" className="flex items-center space-x-2">
               <MessageSquare className="h-4 w-4" />
               <span>Posts</span>
@@ -216,6 +218,10 @@ export default function ClassroomPage() {
             <TabsTrigger value="video-classes" className="flex items-center space-x-2">
               <Video className="h-4 w-4" />
               <span>Video Classes</span>
+            </TabsTrigger>
+            <TabsTrigger value="screening-tests" className="flex items-center space-x-2">
+              <Shield className="h-4 w-4" />
+              <span>Screening Tests</span>
             </TabsTrigger>
             <TabsTrigger value="students" className="flex items-center space-x-2">
               <Users className="h-4 w-4" />
@@ -261,6 +267,10 @@ export default function ClassroomPage() {
             ) : (
               <StudentVideoClasses classroomId={classroomId} />
             )}
+          </TabsContent>
+
+          <TabsContent value="screening-tests" className="space-y-6">
+            <ScreeningTestList classroomId={classroomId} />
           </TabsContent>
 
           <TabsContent value="students" className="space-y-6">
