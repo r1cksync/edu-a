@@ -1,13 +1,8 @@
+
 import { ViolationEvent } from './types'
 
-// Define types for face-api.js
 interface FaceDetection {
-  box: {
-    x: number
-    y: number
-    width: number
-    height: number
-  }
+  box: { x: number; y: number; width: number; height: number }
   landmarks: any
   descriptor: Float32Array
 }
@@ -17,24 +12,16 @@ interface FaceApiDetections {
   forEach: (callback: (detection: FaceDetection) => void) => void
 }
 
-// Face API models - we'll load these from CDN
 declare global {
   interface Window {
-    faceapi: {
+    faceapi?: {
       nets: {
-        tinyFaceDetector: {
-          loadFromUri: (uri: string) => Promise<void>
-        }
-        faceLandmark68Net: {
-          loadFromUri: (uri: string) => Promise<void>
-        }
-        faceRecognitionNet: {
-          loadFromUri: (uri: string) => Promise<void>
-        }
+        tinyFaceDetector: { loadFromUri: (uri: string) => Promise<void> }
+        faceLandmark68Net: { loadFromUri: (uri: string) => Promise<void> }
+        faceRecognitionNet: { loadFromUri: (uri: string) => Promise<void> }
       }
       detectAllFaces: (input: HTMLVideoElement, options?: any) => Promise<FaceApiDetections>
-      withFaceLandmarks: (input: HTMLVideoElement, options?: any) => Promise<FaceApiDetections>
-      TinyFaceDetectorOptions: new (options?: { inputSize?: number, scoreThreshold?: number }) => any
+      TinyFaceDetectorOptions: new (options?: { inputSize?: number; scoreThreshold?: number }) => any
     }
   }
 }
@@ -49,10 +36,9 @@ export class FaceDetectionService {
   private noFaceStartTime?: number
   private multipleFaceStartTime?: number
   
-  // Detection thresholds
-  private readonly NO_FACE_THRESHOLD = 3000 // 3 seconds
-  private readonly MULTIPLE_FACE_THRESHOLD = 2000 // 2 seconds
-  private readonly DETECTION_INTERVAL = 1000 // 1 second
+  private readonly NO_FACE_THRESHOLD = 3000
+  private readonly MULTIPLE_FACE_THRESHOLD = 2000
+  private readonly DETECTION_INTERVAL = 1000
   
   constructor(videoElement: HTMLVideoElement, onViolation: (violation: ViolationEvent) => void) {
     this.videoElement = videoElement
@@ -63,26 +49,29 @@ export class FaceDetectionService {
     try {
       console.log('Loading face detection models...')
       
-      // Load face-api.js from CDN if not already loaded
       if (!window.faceapi) {
         await this.loadFaceApiScript()
       }
       
-      // Load the models
       const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@latest/model'
-      
       await Promise.all([
-        window.faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl),
-        window.faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl),
-        window.faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl)
+        window.faceapi!.nets.tinyFaceDetector.loadFromUri(modelUrl),
+        window.faceapi!.nets.faceLandmark68Net.loadFromUri(modelUrl),
+        window.faceapi!.nets.faceRecognitionNet.loadFromUri(modelUrl)
       ])
       
       this.isModelLoaded = true
       console.log('Face detection models loaded successfully')
     } catch (error) {
-      console.error('Failed to load face detection models:', error)
-      // Fall back to basic violation detection without AI
+      console.warn('Failed to load face detection models, falling back to basic detection:', error)
       this.isModelLoaded = false
+      this.onViolation({
+        type: 'suspicious_movement',
+        timestamp: Date.now(),
+        severity: 'medium',
+        description: 'Failed to load face detection models',
+        data: { error: error instanceof Error ? error.message : 'Unknown error' }
+      });
     }
   }
 
@@ -96,7 +85,10 @@ export class FaceDetectionService {
       const script = document.createElement('script')
       script.src = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@latest/dist/face-api.min.js'
       script.onload = () => resolve()
-      script.onerror = () => reject(new Error('Failed to load face-api.js'))
+      script.onerror = () => {
+        console.warn('Failed to load face-api.js, continuing without AI detection')
+        reject(new Error('Failed to load face-api.js'))
+      }
       document.head.appendChild(script)
     })
   }
@@ -107,7 +99,6 @@ export class FaceDetectionService {
     this.isRunning = true
     console.log('Starting face detection monitoring...')
     
-    // Start detection loop
     this.detectionInterval = window.setInterval(() => {
       this.performFaceDetection()
     }, this.DETECTION_INTERVAL)
@@ -128,14 +119,13 @@ export class FaceDetectionService {
 
   private async performFaceDetection(): Promise<void> {
     if (!this.isModelLoaded || !this.videoElement || this.videoElement.readyState !== 4) {
-      // Use basic detection without AI models
       this.performBasicDetection()
       return
     }
     
     try {
-      const detections = await window.faceapi
-        .detectAllFaces(this.videoElement, new window.faceapi.TinyFaceDetectorOptions({
+      const detections = await window.faceapi!
+        .detectAllFaces(this.videoElement, new window.faceapi!.TinyFaceDetectorOptions({
           inputSize: 320,
           scoreThreshold: 0.5
         }))
@@ -150,13 +140,11 @@ export class FaceDetectionService {
   }
 
   private performBasicDetection(): void {
-    // Basic detection using video properties
     if (!this.videoElement || this.videoElement.readyState !== 4) {
       this.handleFaceDetectionResult(0)
       return
     }
     
-    // Check if video is playing and has content
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     
@@ -172,12 +160,10 @@ export class FaceDetectionService {
       ctx.drawImage(this.videoElement, 0, 0)
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       
-      // Basic motion/content detection
       const hasContent = this.analyzeImageData(imageData)
       this.handleFaceDetectionResult(hasContent ? 1 : 0)
       
     } catch (error) {
-      // If we can't analyze the video, assume no face
       this.handleFaceDetectionResult(0)
     }
   }
@@ -187,7 +173,6 @@ export class FaceDetectionService {
     let totalBrightness = 0
     let variance = 0
     
-    // Calculate average brightness
     for (let i = 0; i < data.length; i += 4) {
       const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3
       totalBrightness += brightness
@@ -195,7 +180,6 @@ export class FaceDetectionService {
     
     const avgBrightness = totalBrightness / (data.length / 4)
     
-    // Calculate variance to detect if image has content
     for (let i = 0; i < data.length; i += 4) {
       const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3
       variance += Math.pow(brightness - avgBrightness, 2)
@@ -203,8 +187,6 @@ export class FaceDetectionService {
     
     variance = variance / (data.length / 4)
     
-    // If variance is too low, probably no meaningful content
-    // If brightness is too low/high, probably lighting issues
     return variance > 100 && avgBrightness > 20 && avgBrightness < 235
   }
 
@@ -212,7 +194,6 @@ export class FaceDetectionService {
     const now = Date.now()
     
     if (faceCount === 0) {
-      // No face detected
       if (!this.noFaceStartTime) {
         this.noFaceStartTime = now
       } else if (now - this.noFaceStartTime > this.NO_FACE_THRESHOLD) {
@@ -223,16 +204,10 @@ export class FaceDetectionService {
           description: 'Student face not visible in camera',
           data: { duration: now - this.noFaceStartTime }
         })
-        
-        // Reset timer to avoid spam
         this.noFaceStartTime = now
       }
-      
-      // Clear multiple face timer
       this.multipleFaceStartTime = undefined
-      
     } else if (faceCount > 1) {
-      // Multiple faces detected
       if (!this.multipleFaceStartTime) {
         this.multipleFaceStartTime = now
       } else if (now - this.multipleFaceStartTime > this.MULTIPLE_FACE_THRESHOLD) {
@@ -243,16 +218,10 @@ export class FaceDetectionService {
           description: `Multiple people detected in camera (${faceCount} faces)`,
           data: { faceCount, duration: now - this.multipleFaceStartTime }
         })
-        
-        // Reset timer to avoid spam
         this.multipleFaceStartTime = now
       }
-      
-      // Clear no face timer
       this.noFaceStartTime = undefined
-      
     } else {
-      // Exactly one face detected - all good
       this.noFaceStartTime = undefined
       this.multipleFaceStartTime = undefined
     }
@@ -260,15 +229,14 @@ export class FaceDetectionService {
     this.lastFaceCount = faceCount
   }
 
-  // Public methods for environment scanning
   async detectFaces(): Promise<number> {
     if (!this.isModelLoaded || !this.videoElement) {
       return this.lastFaceCount
     }
     
     try {
-      const detections = await window.faceapi
-        .detectAllFaces(this.videoElement, new window.faceapi.TinyFaceDetectorOptions({
+      const detections = await window.faceapi!
+        .detectAllFaces(this.videoElement, new window.faceapi!.TinyFaceDetectorOptions({
           inputSize: 320,
           scoreThreshold: 0.5
         }))

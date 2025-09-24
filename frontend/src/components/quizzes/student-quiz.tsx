@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
@@ -118,7 +118,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
   const [proctoringReady, setProctoringReady] = useState(false)
   const [showViolationAlert, setShowViolationAlert] = useState(false)
   const [currentViolation, setCurrentViolation] = useState<string>('')
-  
+
   // Auto-save
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout>()
   const lastSaveRef = useRef<Date>(new Date())
@@ -126,11 +126,38 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
   const renderCountRef = useRef<number>(0)
   
   // Fetch quiz data
-  const { data: quiz, isLoading: quizLoading } = useQuery({
+  const { data: quizResponse, isLoading: quizLoading } = useQuery({
     queryKey: ['quiz', quizId],
-    queryFn: () => apiClient.getQuiz(quizId) as Promise<Quiz>,
+    queryFn: () => apiClient.getQuiz(quizId),
     enabled: !!quizId
   })
+
+  const quiz = quizResponse?.quiz as Quiz | undefined
+
+  // Map proctoringSettings to ProctoringConfig
+  const proctoringConfig = useMemo(() => {
+    if (!quiz?.proctoringSettings) {
+      console.log('Using fallback MODERATE_PROCTORING_CONFIG')
+      return MODERATE_PROCTORING_CONFIG
+    }
+
+    return {
+      faceDetection: quiz.proctoringSettings.faceDetection ?? true,
+      screenRecording: quiz.proctoringSettings.screenRecording ?? false,
+      browserLockdown: quiz.proctoringSettings.browserLockdown ?? true,
+      preventTabSwitch: quiz.proctoringSettings.tabSwitchingDetection ?? true,
+      allowedTabSwitches: quiz.proctoringSettings.allowedTabSwitches ?? 2,
+      microphoneMonitoring: quiz.proctoringSettings.audioMonitoring ?? false,
+      environmentScan: quiz.proctoringSettings.roomScan ?? true,
+      suspiciousActivityThreshold: quiz.proctoringSettings.suspiciousBehaviorThreshold ?? 70,
+      webcamRequired: true,
+      preventCopyPaste: true,
+      preventRightClick: true,
+      idVerification: false,
+      allowedLookAways: quiz.proctoringSettings.allowedLookAways ?? 5, // Add if supported by FaceDetectionService
+      multiplePersonDetection: quiz.proctoringSettings.multiplePersonDetection ?? true // Add if supported
+    }
+  }, [quiz?.proctoringSettings])
 
   // Use passed session data or fetch if not provided
   const shouldFetch = !passedSessionData && !!sessionId
@@ -143,20 +170,8 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
   // Extract session from response or use passed data
   const session = passedSessionData || (sessionData as any)?.session
 
-  console.log('Quiz:',session.quiz);
+  console.log('QuizPrep:', { quiz, isProctored: quiz?.isProctored, proctoringConfig })
 
-  console.log('🎯 RENDER: Current data state:', {
-    hasPassedSessionData: !!passedSessionData,
-    hasSessionData: !!sessionData, 
-    hasSession: !!session,
-    hasQuiz: !!quiz,
-    quizLoading,
-    sessionLoading,
-    timeRemaining,
-    quizSessionExists: !!quizSession,
-    renderCount: ++renderCountRef.current
-  })
-  
   // Debug session data
   useEffect(() => {
     console.log('🔍 Session data debug:', {
@@ -204,91 +219,79 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
 
   // Update quiz session state when session data loads
   useEffect(() => {
-    console.log('🔍 Session/Quiz data effect triggered:', {
-      hasSession: !!session,
-      hasQuiz: !!quiz,
-      sessionStartedAt: session?.startedAt,
-      quizDuration: quiz?.duration,
-      currentTimeRemaining: timeRemaining,
-      sessionLoading,
-      shouldFetch,
-      isDataReady: !sessionLoading && (!shouldFetch || session)
-    })
-    
-    // Process session data when available
-    if (session && quiz) {
-      console.log('📋 Setting quiz session data...')
-      console.log('📊 Session data being processed:', {
-        sessionId: session._id,
-        startedAt: session.startedAt,
-        status: session.status,
-        hasAnswers: !!session.answers,
-        answersLength: session.answers?.length || 0
-      })
-      
-      // Only set quiz session if it's different to prevent loops
-      if (!quizSession || quizSession._id !== session._id) {
-        console.log('🔄 Updating quiz session state')
-        setQuizSession(session)
+  console.log('🔍 Session/Quiz data effect triggered:', {
+    hasSession: !!session,
+    hasQuiz: !!quiz,
+    sessionStartedAt: session?.startedAt,
+    quizDuration: quiz?.duration,
+    currentTimeRemaining: timeRemaining,
+    sessionLoading,
+    shouldFetch,
+    isDataReady: !sessionLoading && (!shouldFetch || session)
+  });
+
+  if (session && quiz) {
+    console.log('📋 Setting quiz session data...');
+    console.log('📊 Session data being processed:', {
+      sessionId: session._id,
+      startedAt: session.startedAt,
+      status: session.status,
+      hasAnswers: !!session.answers,
+      answersLength: session.answers?.length || 0
+    });
+
+    // Only set quizSession if it's a new session or proctoring setup is incomplete
+    if (!quizSession || quizSession._id !== session._id) {
+      if (quiz.isProctored && session.status === 'in_progress' && !proctoringReady) {
+        console.log('⚠️ In-progress session detected for proctored quiz, requiring setup');
+        setProctoringReady(false); // Reset proctoring to force setup
+        setShowProctoringSetup(true); // Show proctoring setup UI
       } else {
-        console.log('⏭️ Quiz session already set, skipping')
+        console.log('🔄 Updating quiz session state');
+        setQuizSession(session);
+        setAnswers(session.answers || {});
       }
-      
-      setAnswers(session.answers || {})
-      
-      // Reset timer stopped flag when loading new session
-      timerStoppedRef.current = false
-      
-      // Initialize timer for existing session
-      if (session.startedAt) {
-        console.log('⏳ About to initialize timer:', {
-          hasQuiz: !!quiz,
-          hasStartedAt: !!session.startedAt,
-          startedAt: session.startedAt,
-          quizDuration: session.quiz.duration,
-          startedAtType: typeof session.startedAt
-        })
-        
-        try {
-          const startTime = new Date(session.startedAt)
-          console.log('📅 Parsed start time:', {
-            startTime,
-            isValid: !isNaN(startTime.getTime()),
-            timestamp: startTime.getTime()
-          })
-          
-          if (isNaN(startTime.getTime())) {
-            console.error('❌ Invalid startedAt date:', session.startedAt)
-            return
-          }
-          
-          const endTime = new Date(startTime.getTime() + session.quiz.duration * 60000)
-          const remaining = Math.max(0, endTime.getTime() - Date.now())
-          
-          console.log('⏱️ Initializing timer from existing session:', {
-            startTime: startTime.toISOString(),
-            duration: session.quiz.duration,
-            endTime: endTime.toISOString(),
-            remaining,
-            remainingMinutes: Math.floor(remaining / 60000),
-            isTimerAlreadyStopped: timerStoppedRef.current
-          })
-          
-          setTimeRemaining(remaining)
-        } catch (error) {
-          console.error('❌ Error initializing timer:', error)
+    } else {
+      console.log('⏭️ Quiz session already set, skipping');
+    }
+
+    // Initialize timer for existing session
+    if (session.startedAt && !timerStoppedRef.current) {
+      console.log('⏳ About to initialize timer:', {
+        hasQuiz: !!quiz,
+        hasStartedAt: !!session.startedAt,
+        startedAt: session.startedAt,
+        quizDuration: session.quiz.duration,
+        startedAtType: typeof session.startedAt
+      });
+
+      try {
+        const startTime = new Date(session.startedAt);
+        if (isNaN(startTime.getTime())) {
+          console.error('❌ Invalid startedAt date:', session.startedAt);
+          return;
         }
-      } else {
-        console.log('⚠️ Cannot initialize timer:', {
-          hasQuiz: !!quiz,
-          hasStartedAt: !!session?.startedAt,
-          startedAt: session?.startedAt,
-          duration: quiz?.duration
-        })
+
+        const endTime = new Date(startTime.getTime() + session.quiz.duration * 60000);
+        const remaining = Math.max(0, endTime.getTime() - Date.now());
+
+        console.log('⏱️ Initializing timer from existing session:', {
+          startTime: startTime.toISOString(),
+          duration: session.quiz.duration,
+          endTime: endTime.toISOString(),
+          remaining,
+          remainingMinutes: Math.floor(remaining / 60000),
+          isTimerAlreadyStopped: timerStoppedRef.current
+        });
+
+        setTimeRemaining(remaining);
+      } catch (error) {
+        console.error('❌ Error initializing timer:', error);
       }
     }
-  }, [session, quiz, quizSession]) // Added quizSession to prevent setting it repeatedly
-  
+  }
+}, [session, quiz, quizSession, proctoringReady]);
+
   // Initialize proctoring
   const {
     isInitialized: proctoringInitialized,
@@ -304,7 +307,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     allowStop,
     performEnvironmentScan
   } = useProctoring({
-    config: quiz?.proctoringSettings || MODERATE_PROCTORING_CONFIG,
+    config: proctoringConfig,
     onViolation: (violation) => {
       console.warn('Violation detected:', violation)
       setCurrentViolation(violation.description)
@@ -327,7 +330,20 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
       setTimeout(() => setShowViolationAlert(false), 5000)
     }
   })
-  
+
+  // Debug proctoring state
+  useEffect(() => {
+    console.log('🔍 Proctoring state debug:', {
+      isInitialized: proctoringInitialized,
+      isActive: proctoringActive,
+      isLoading: proctoringLoading,
+      error: proctoringError,
+      violationsCount: violations.length,
+      riskScore,
+      hasVideoElement: !!videoElement
+    })
+  }, [proctoringInitialized, proctoringActive, proctoringLoading, proctoringError, violations, riskScore, videoElement])
+
   // Real-time monitoring integration
   const {
     isConnected: socketConnected,
@@ -357,6 +373,10 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
         })
         setTimeRemaining(remaining)
       }
+    },
+    onError: (error) => {
+      console.error('Failed to start quiz session:', error)
+      alert(`Failed to start quiz session: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   })
   
@@ -382,7 +402,6 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
       allowStop()
       stopProctoring()
       
-      // Use a non-blocking notification approach
       const response = data as any
       const score = response.score || 0
       const totalPoints = response.totalPoints || quiz?.totalPoints || 0
@@ -391,20 +410,10 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
       
       console.log(`✅ Quiz completed! Score: ${score}/${totalPoints} (${percentage}%) - Time: ${timeSpent}`)
       
-      // Show an alert for now to confirm it's working, then redirect
       alert(`Quiz submitted successfully! Score: ${score}/${totalPoints} (${percentage}%) - Time: ${timeSpent}`)
       
-      // Reset state and redirect to results page
       setIsSubmitting(false)
-      timerStoppedRef.current = true // Stop timer completely
-      
-      // Debug redirect info
-      console.log('🔗 Preparing redirect:', {
-        classroomId,
-        quizSessionId: quizSession?._id,
-        hasQuizSession: !!quizSession,
-        redirectUrl: `/dashboard/classrooms/${classroomId}/quiz-results/${quizSession?._id}`
-      })
+      timerStoppedRef.current = true
       
       if (!quizSession?._id) {
         console.error('❌ Cannot redirect - missing quizSession._id')
@@ -412,7 +421,6 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
         return
       }
       
-      // Redirect to quiz results page with session data
       const redirectUrl = `/dashboard/classrooms/${classroomId}/quiz-results/${quizSession._id}?score=${score}&totalPoints=${totalPoints}&percentage=${percentage}&timeSpent=${timeSpent}`
       console.log('🚀 Redirecting to:', redirectUrl)
       
@@ -421,13 +429,11 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
         console.log('✅ Router.push called successfully')
       } catch (error) {
         console.error('❌ Router.push failed:', error)
-        // Fallback to classroom
         router.push(`/dashboard/classrooms/${classroomId}`)
       }
     },
     onError: (error) => {
       console.error('❌ Quiz submission failed:', error)
-      console.error('Error details:', error)
       alert('Failed to submit quiz. Please try again.')
       setIsSubmitting(false)
     }
@@ -450,7 +456,6 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     setIsSubmitting(true)
     
     try {
-      // Save final answers first
       console.log('💾 Saving final answers...')
       await saveAnswersMutation.mutateAsync({
         sessionId: quizSession._id,
@@ -459,7 +464,6 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
       
       console.log('✅ Answers saved, now submitting quiz...')
       
-      // Then submit the quiz
       await submitQuizMutation.mutateAsync(quizSession._id)
       
       console.log('✅ Quiz submitted successfully!')
@@ -471,61 +475,56 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     }
   }, [quizSession, answers, saveAnswersMutation, submitQuizMutation])
   
-  // Timer effect - simplified to prevent infinite loops
+  // Timer effect
   useEffect(() => {
-    // Only start timer when we have a valid quiz session and timer is initialized
-    if (!quizSession || timeRemaining < 0 || timerStoppedRef.current || isSubmitting) {
-      if (timeRemaining < 0) {
-        console.log('⏳ Timer not initialized yet (timeRemaining < 0)')
+  if (!quizSession || timeRemaining < 0 || timerStoppedRef.current || isSubmitting) {
+    if (timeRemaining < 0) {
+      console.log('⏳ Timer not initialized yet (timeRemaining < 0)');
+    }
+    return;
+  }
+
+  console.log('🕒 Starting timer with', Math.floor(timeRemaining / 1000), 'seconds remaining');
+
+  const timer = setInterval(() => {
+    setTimeRemaining(prev => {
+      const newTime = prev - 1000;
+
+      if (newTime <= 0 && !timerStoppedRef.current) {
+        console.log('⏰ Time up - auto submitting');
+        timerStoppedRef.current = true;
+        allowStop();
+        handleSubmit();
+        return 0;
       }
-      return
-    }
-    
-    console.log('🕒 Starting timer with', Math.floor(timeRemaining/1000), 'seconds remaining')
-    
-    const timer = setInterval(() => {
-      setTimeRemaining(prev => {
-        const newTime = prev - 1000
-        
-        // Auto-submit when time is up
-        if (newTime <= 0 && !timerStoppedRef.current) {
-          console.log('⏰ Time up - auto submitting')
-          timerStoppedRef.current = true
-          allowStop() // Allow proctoring to stop
-          handleSubmit()
-          return 0
-        }
-        
-        // Show warning at 5 minutes
-        if (newTime === 300000) { // 5 minutes
-          alert('5 minutes remaining! Please finish your quiz soon.')
-        }
-        
-        return Math.max(0, newTime)
-      })
-    }, 1000)
-    
-    return () => {
-      clearInterval(timer)
-    }
-  }, [quizSession?._id, isSubmitting, allowStop, handleSubmit])
+
+      if (newTime === 300000) {
+        alert('5 minutes remaining! Please finish your quiz soon.');
+      }
+
+      return Math.max(0, newTime);
+    });
+  }, 1000);
+
+  return () => {
+    clearInterval(timer);
+  };
+}, [quizSession?._id, isSubmitting]); // Removed handleSubmit, allowStop from dependencies
   
   // Auto-save effect
   useEffect(() => {
     if (!quizSession || Object.keys(answers).length === 0) return
     
-    // Clear existing timeout
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current)
     }
     
-    // Set new timeout for auto-save
     autoSaveTimeoutRef.current = setTimeout(() => {
       saveAnswersMutation.mutate({
         sessionId: quizSession._id,
         answers
       })
-    }, 30000) // 30 seconds
+    }, 30000)
     
     return () => {
       if (autoSaveTimeoutRef.current) {
@@ -534,7 +533,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     }
   }, [answers, quizSession, saveAnswersMutation])
 
-  // Send progress updates via socket for real-time monitoring
+  // Send progress updates via socket
   useEffect(() => {
     if (!quizSession || !questions.length) return
 
@@ -591,55 +590,98 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
   
   // Environment setup
   const handleEnvironmentSetup = useCallback(async () => {
-    console.log('Starting environment setup...', { isProctored: quiz?.isProctored })
-    
-    if (!quiz?.isProctored) {
-      console.log('Quiz is not proctored, setting ready immediately')
+  console.log('Starting environment setup...', { isProctored: quiz?.isProctored })
+
+  if (!quiz?.isProctored) {
+    console.log('Quiz is not proctored, setting ready immediately')
+    setProctoringReady(true)
+    return
+  }
+
+  console.log('Quiz is proctored, initializing proctoring system with config:', proctoringConfig)
+  setShowProctoringSetup(true)
+  setLocalProctoringError(null) // Reset error state
+
+  try {
+    console.log('Initializing proctoring...')
+    const initResult = await initializeProctoring()
+    console.log('Proctoring initialization result:', initResult)
+
+    if (!initResult) {
+      throw new Error('Proctoring initialization returned false')
+    }
+
+    console.log('Checking camera permissions...')
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const hasWebcam = devices.some(device => device.kind === 'videoinput')
+    if (!hasWebcam) {
+      throw new Error('No webcam detected. Please connect a webcam.')
+    }
+
+    console.log('Performing environment scan...')
+    const scanResult = await performEnvironmentScan()
+    console.log('Environment scan result:', scanResult)
+
+    if (scanResult.success) {
       setProctoringReady(true)
-      return
+      setShowProctoringSetup(false)
+      setLocalProctoringError(null) // Reset error on success
+      console.log('Environment setup completed successfully')
+    } else {
+      console.warn('Environment setup issues detected:', scanResult)
+      alert(`Environment setup issues:\n${scanResult.issues.join('\n')}\n\nRecommendations:\n${scanResult.recommendations.join('\n')}`)
     }
-    
-    console.log('Quiz is proctored, initializing proctoring system')
-    setShowProctoringSetup(true)
-    
-    try {
-      console.log('Initializing proctoring...')
-      const initResult = await initializeProctoring()
-      console.log('Proctoring initialization result:', initResult)
-      
-      console.log('Performing environment scan...')
-      const scanResult = await performEnvironmentScan()
-      console.log('Environment scan result:', scanResult)
-      
-      if (scanResult.success) {
-        setProctoringReady(true)
-        setShowProctoringSetup(false)
-        console.log('Environment setup completed successfully')
-      } else {
-        console.warn('Environment setup issues detected:', scanResult)
-        alert(`Environment setup issues:\n${scanResult.issues.join('\n')}\n\nRecommendations:\n${scanResult.recommendations.join('\n')}`)
-      }
-    } catch (error) {
-      console.error('Environment setup failed:', error)
-      alert(`Failed to setup proctoring: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }, [quiz?.isProctored, initializeProctoring, performEnvironmentScan])
-  
+  } catch (error) {
+    console.error('Environment setup failed:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error during environment setup'
+    setLocalProctoringError(errorMessage)
+    alert(`Failed to setup proctoring: ${errorMessage}`)
+  }
+}, [quiz?.isProctored, initializeProctoring, performEnvironmentScan])
+
+  // Proctoring error state
+  // Proctoring error state
+const [localProctoringError, setLocalProctoringError] = useState<string | null>(null)
+
   // Start quiz
   const handleStartQuiz = useCallback(async () => {
-    if (!proctoringReady) return
-    
-    try {
-      if (quiz?.isProctored) {
-        await startProctoring()
-      }
-      
-      await startSessionMutation.mutateAsync(quiz?.isProctored ? {} : undefined)
-    } catch (error) {
-      alert(`Failed to start quiz: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  if (!proctoringReady) {
+    console.log('Cannot start quiz: Proctoring not ready');
+    setShowProctoringSetup(true); // Show setup UI if not ready
+    return;
+  }
+
+  try {
+    if (quiz?.isProctored && !proctoringActive) {
+      console.log('Starting proctoring with config:', proctoringConfig);
+      await startProctoring();
+      console.log('Proctoring started successfully');
     }
-  }, [proctoringReady, quiz?.isProctored, startProctoring, startSessionMutation])
-  
+
+    console.log('Starting quiz session...');
+    await startSessionMutation.mutateAsync(quiz?.isProctored ? { proctoringConfig } : undefined);
+    console.log('Quiz session started successfully');
+  } catch (error) {
+    console.error('Failed to start quiz/proctoring:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error starting quiz';
+    setLocalProctoringError(errorMessage);
+    alert(`Failed to start quiz: ${errorMessage}`);
+  }
+}, [proctoringReady, quiz?.isProctored, startProctoring, startSessionMutation, proctoringConfig]);
+
+  // Monitor proctoring state changes
+ useEffect(() => {
+  if (quiz?.isProctored && quizSession && !proctoringActive && proctoringInitialized) {
+    console.log('Proctoring should be active but is not. Ensuring proctoring start...');
+    if (!proctoringLoading && !localProctoringError) {
+      startProctoring().catch(error => {
+        console.error('Retry start proctoring failed:', error);
+        setLocalProctoringError(error instanceof Error ? error.message : 'Failed to activate proctoring');
+      });
+    }
+  }
+}, [quiz?.isProctored, quizSession, proctoringActive, proctoringInitialized, proctoringLoading, localProctoringError, startProctoring]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -658,7 +700,6 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     )
   }
   
-  // Check if quiz is available
   const now = new Date()
   const startTime = new Date(quiz.scheduledStartTime)
   const endTime = new Date(quiz.scheduledEndTime)
@@ -673,8 +714,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
           {format(startTime, 'EEEE, MMMM d, yyyy \'at\' h:mm a')}
         </p>
         <p className="text-sm text-gray-500 mt-2">
-          {formatDistanceToNow(startTime, { addSuffix: true })
-}
+          {formatDistanceToNow(startTime, { addSuffix: true })}
         </p>
       </div>
     )
@@ -706,7 +746,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
             onStartQuiz={handleStartQuiz}
             proctoringReady={proctoringReady}
             proctoringLoading={proctoringLoading}
-            proctoringError={proctoringError}
+            proctoringError={localProctoringError}
             showProctoringSetup={showProctoringSetup}
             videoElement={videoElement}
           />
@@ -780,23 +820,46 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
               </div>
               
               {/* Proctoring Status */}
-              {quiz.isProctored && (
-                <div className="flex items-center">
-                  <Shield className={`w-5 h-5 mr-2 ${proctoringActive ? 'text-green-600' : 'text-red-600'}`} />
-                  <span className={`text-sm ${proctoringActive ? 'text-green-600' : 'text-red-600'}`}>
-                    {proctoringActive ? 'Monitoring Active' : 'Monitoring Inactive'}
-                  </span>
-                  {riskScore > 0 && (
-                    <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                      riskScore < 30 ? 'bg-green-100 text-green-800' :
-                      riskScore < 70 ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      Risk: {riskScore}%
-                    </span>
-                  )}
-                </div>
-              )}
+              {quiz.isProctored && proctoringInitialized && (
+  <div className="flex items-center">
+    <Shield
+      className={`w-5 h-5 mr-2 ${
+        proctoringActive ? 'text-green-600' : proctoringLoading ? 'text-yellow-600' : 'text-red-600'
+      }`}
+    />
+    <span
+      className={`text-sm ${
+        proctoringActive ? 'text-green-600' : proctoringLoading ? 'text-yellow-600' : 'text-red-600'
+      }`}
+    >
+      {/* {proctoringActive
+        ? 'Monitoring Active'
+        : proctoringLoading
+        ? 'Initializing Monitoring...'
+        : 'Monitoring Error'} */}
+    </span>
+    {riskScore > 0 && (
+      <span
+        className={`ml-2 px-2 py-1 rounded text-xs ${
+          riskScore < 30 ? 'bg-green-100 text-green-800' :
+          riskScore < 70 ? 'bg-yellow-100 text-yellow-800' :
+          'bg-red-100 text-red-800'
+        }`}
+      >
+        Risk: {riskScore}%
+      </span>
+    )}
+  </div>
+)}
+              
+              {/* Proctoring Error */}
+              {/* Proctoring Error */}
+{/* {localProctoringError && quiz.isProctored && (
+  <div className="flex items-center text-red-600">
+    <AlertCircle className="w-5 h-5 mr-2" />
+    <span className="text-sm">Proctoring Error: {localProctoringError}</span>
+  </div>
+)} */}
               
               {/* Save Status */}
               <button
@@ -897,7 +960,7 @@ function QuizPrep({
   onStartQuiz, 
   proctoringReady, 
   proctoringLoading, 
-  proctoringError, 
+  proctoringError:localProctoringError, 
   showProctoringSetup, 
   videoElement 
 }: {
@@ -921,10 +984,10 @@ function QuizPrep({
       environmentChecked,
       proctoringReady,
       proctoringLoading,
-      proctoringError,
+      proctoringError:localProctoringError,
       showProctoringSetup
     })
-  }, [quiz.isProctored, environmentChecked, proctoringReady, proctoringLoading, proctoringError, showProctoringSetup])
+  }, [quiz.isProctored, environmentChecked, proctoringReady, proctoringLoading, localProctoringError, showProctoringSetup])
   
   return (
     <div className="bg-white rounded-lg shadow-lg p-8">
@@ -1025,9 +1088,9 @@ function QuizPrep({
                 </div>
               )}
               
-              {proctoringError && (
+              {localProctoringError && (
                 <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded-lg">
-                  <p className="text-sm text-red-700">{proctoringError}</p>
+                  <p className="text-sm text-red-700">{localProctoringError}</p>
                 </div>
               )}
             </div>
@@ -1079,7 +1142,7 @@ function QuizPrep({
       )}
 
       {/* Proctoring Error Display */}
-      {proctoringError && (
+      {localProctoringError && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
           <div className="flex items-center">
             <div className="flex-shrink-0">
@@ -1089,7 +1152,7 @@ function QuizPrep({
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Proctoring Setup Error</h3>
-              <p className="mt-1 text-sm text-red-700">{proctoringError}</p>
+              <p className="mt-1 text-sm text-red-700">{localProctoringError}</p>
               <p className="mt-2 text-sm text-red-600">
                 Please ensure your camera and microphone are connected and you've granted the necessary permissions.
               </p>
@@ -1099,7 +1162,7 @@ function QuizPrep({
       )}
 
       {/* Setup Status */}
-      {quiz.isProctored && environmentChecked && !proctoringReady && !proctoringError && (
+      {quiz.isProctored && environmentChecked && !proctoringReady && !localProctoringError && (
         <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-center">
             <div className="flex-shrink-0">
@@ -1122,6 +1185,7 @@ function QuizPrep({
           <button
             onClick={onStartQuiz}
             className="px-8 py-4 bg-indigo-600 text-white text-lg font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+            disabled={proctoringLoading}
           >
             Start Quiz
           </button>

@@ -1,10 +1,10 @@
+
 import { FaceDetectionService } from './face-detection'
 import { BrowserLockdownService } from './browser-lockdown'
 import { ActivityMonitorService } from './activity-monitor'
 import { ViolationDetector } from './violation-detector'
 import type { ProctoringConfig, ViolationEvent, ProctoringState } from './types'
 
-// Re-export types for backward compatibility
 export type { ProctoringConfig, ViolationEvent, ProctoringState } from './types'
 
 export class ProctoringManager {
@@ -21,7 +21,7 @@ export class ProctoringManager {
   private stream?: MediaStream
   private onViolation?: (violation: ViolationEvent) => void
   private onStateChange?: (state: ProctoringState) => void
-  private canStop: boolean = false // Flag to control stopping proctoring
+  private canStop: boolean = false
   
   constructor(config: ProctoringConfig) {
     this.config = config
@@ -45,7 +45,7 @@ export class ProctoringManager {
       
       // Initialize camera if required
       if (this.config.webcamRequired || this.config.faceDetection) {
-        await this.initializeCamera()
+        await this.startCameraStream();
       }
       
       // Initialize services based on config
@@ -71,14 +71,25 @@ export class ProctoringManager {
     try {
       console.log('Starting proctoring monitoring...')
       
-      // Start camera stream if not already started
+      // Ensure camera stream is active
       if (this.config.webcamRequired && !this.stream) {
         await this.startCameraStream()
       }
       
       // Start all active services
       if (this.services.faceDetection && this.config.faceDetection) {
-        await this.services.faceDetection.start()
+        try {
+          await this.services.faceDetection.start()
+        } catch (error) {
+          console.warn('Face detection service failed to start:', error)
+          this.state.violations.push({
+            type: 'suspicious_movement',
+            timestamp: Date.now(),
+            severity: 'medium',
+            description: 'Face detection service failed to start',
+            data: { error: error instanceof Error ? error.message : 'Unknown error' }
+          });
+        }
       }
       
       if (this.services.browserLockdown && this.config.browserLockdown) {
@@ -97,7 +108,7 @@ export class ProctoringManager {
       this.startHeartbeat()
       
       this.state.isActive = true
-      this.canStop = false // Reset canStop flag when starting
+      this.canStop = false
       this.notifyStateChange()
       
       console.log('Proctoring monitoring started')
@@ -115,7 +126,6 @@ export class ProctoringManager {
 
     console.log('Stopping proctoring monitoring...')
     
-    // Stop all services
     if (this.services.faceDetection) {
       this.services.faceDetection.stop()
     }
@@ -132,7 +142,6 @@ export class ProctoringManager {
       this.services.violationDetector.stop()
     }
     
-    // Stop camera stream
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop())
       this.stream = undefined
@@ -144,7 +153,6 @@ export class ProctoringManager {
     console.log('Proctoring monitoring stopped')
   }
 
-  // Method to allow stopping proctoring (called when quiz time is up or submitted)
   allowStop(): void {
     this.canStop = true
     console.log('Proctoring stop allowed')
@@ -163,18 +171,16 @@ export class ProctoringManager {
       
       this.stream = await navigator.mediaDevices.getUserMedia(constraints)
       
-      // Create video element for face detection
       this.videoElement = document.createElement('video')
       this.videoElement.srcObject = this.stream
       this.videoElement.autoplay = true
       this.videoElement.muted = true
       this.videoElement.playsInline = true
       
-      // Wait for video to be ready
       await new Promise<void>((resolve, reject) => {
         this.videoElement!.onloadedmetadata = () => resolve()
         this.videoElement!.onerror = reject
-        setTimeout(reject, 5000) // 5 second timeout
+        setTimeout(reject, 5000)
       })
       
       console.log('Camera stream started successfully')
@@ -215,32 +221,35 @@ export class ProctoringManager {
     }
   }
 
-  private async initializeCamera(): Promise<void> {
-    console.log('Camera setup ready')
-  }
-
   private async initializeServices(): Promise<void> {
-    // Initialize face detection service
     if (this.config.faceDetection && this.videoElement) {
       this.services.faceDetection = new FaceDetectionService(
         this.videoElement,
         (violation: ViolationEvent) => this.handleViolation(violation)
       )
-      await this.services.faceDetection.initialize()
+      try {
+        await this.services.faceDetection.initialize()
+      } catch (error) {
+        console.warn('Face detection initialization failed:', error)
+        this.state.violations.push({
+          type: 'suspicious_movement',
+          timestamp: Date.now(),
+          severity: 'medium',
+          description: 'Failed to initialize face detection',
+          data: { error: error instanceof Error ? error.message : 'Unknown error' }
+        });
+      }
     }
     
-    // Initialize browser lockdown service
     if (this.config.browserLockdown) {
       this.services.browserLockdown = new BrowserLockdownService(this.config)
     }
     
-    // Initialize activity monitor service
     this.services.activityMonitor = new ActivityMonitorService(
       this.config,
       (violation: ViolationEvent) => this.handleViolation(violation)
     )
     
-    // Initialize violation detector
     this.services.violationDetector = new ViolationDetector(
       this.config,
       (violation: ViolationEvent) => this.handleViolation(violation)
@@ -255,7 +264,6 @@ export class ProctoringManager {
     this.state.violations.push(violation)
     this.updateRiskScore()
     
-    // Notify violation handler
     if (this.onViolation) {
       this.onViolation(violation)
     }
@@ -266,10 +274,9 @@ export class ProctoringManager {
   private updateRiskScore(): void {
     const now = Date.now()
     const recentViolations = this.state.violations.filter(
-      v => now - v.timestamp < 300000 // Last 5 minutes
+      v => now - v.timestamp < 300000
     )
     
-    // Calculate risk score based on violation severity and frequency
     let score = 0
     recentViolations.forEach(violation => {
       switch (violation.severity) {
@@ -285,7 +292,6 @@ export class ProctoringManager {
       }
     })
     
-    // Apply frequency multiplier
     if (recentViolations.length > 5) {
       score *= 1.5
     }
@@ -302,7 +308,7 @@ export class ProctoringManager {
       
       this.state.lastHeartbeat = Date.now()
       this.notifyStateChange()
-    }, 5000) // 5 second heartbeat
+    }, 5000)
   }
 
   private notifyStateChange(): void {
@@ -311,7 +317,6 @@ export class ProctoringManager {
     }
   }
 
-  // Public methods for external access
   getState(): ProctoringState {
     return { ...this.state }
   }
@@ -328,7 +333,6 @@ export class ProctoringManager {
     this.onStateChange = handler
   }
 
-  // Environment scan for pre-quiz setup
   async performEnvironmentScan(): Promise<{
     success: boolean
     issues: string[]
@@ -338,7 +342,6 @@ export class ProctoringManager {
     const recommendations: string[] = []
     
     try {
-      // Check lighting conditions
       if (this.services.faceDetection) {
         const lightingCheck = await this.services.faceDetection.checkLighting()
         if (!lightingCheck.adequate) {
@@ -347,7 +350,6 @@ export class ProctoringManager {
         }
       }
       
-      // Check for multiple faces
       if (this.services.faceDetection) {
         const faceCount = await this.services.faceDetection.detectFaces()
         if (faceCount > 1) {
@@ -359,7 +361,6 @@ export class ProctoringManager {
         }
       }
       
-      // Check browser compatibility
       const browserCheck = this.services.browserLockdown?.checkCompatibility()
       if (browserCheck && !browserCheck.compatible) {
         issues.push('Browser not fully compatible with proctoring features')
@@ -381,7 +382,6 @@ export class ProctoringManager {
     }
   }
 
-  // Get summary for review
   getSummary() {
     const totalViolations = this.state.violations.length
     const violationsByType = this.state.violations.reduce((acc, v) => {
