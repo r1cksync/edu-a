@@ -132,7 +132,7 @@ export default function StudentQuiz({ quizId, classroomId, sessionId, sessionDat
     enabled: !!quizId
   })
 
-  const quiz = quizResponse?.quiz as Quiz | undefined
+  const quiz = (quizResponse as { quiz: Quiz | undefined })?.quiz
 
   // Map proctoringSettings to ProctoringConfig
   const proctoringConfig = useMemo(() => {
