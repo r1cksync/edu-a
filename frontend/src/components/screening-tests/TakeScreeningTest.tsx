@@ -29,6 +29,14 @@ interface Question {
   points: number;
 }
 
+interface CurrentBatch {
+  category: string;
+  difficulty: string;
+  batchNumber: number;
+  questionsCount: number;
+  answeredQuestions: number;
+}
+
 interface ScreeningTestInterface {
   _id: string;
   screeningTest: {
@@ -52,6 +60,9 @@ interface ScreeningTestInterface {
     timestamp: Date;
     action: 'visit' | 'answer' | 'flag' | 'unflag';
   }>;
+  isDynamicDifficulty?: boolean;
+  currentBatch?: CurrentBatch;
+  dynamicProgress?: any;
 }
 
 interface TakeScreeningTestProps {
@@ -74,6 +85,12 @@ const TakeScreeningTest: React.FC<TakeScreeningTestProps> = ({ attemptId }) => {
   const [questionStartTimes, setQuestionStartTimes] = useState<Record<string, number>>({});
   const [questionTimeSpent, setQuestionTimeSpent] = useState<Record<string, number>>({});
   const [currentQuestionStartTime, setCurrentQuestionStartTime] = useState<number>(0);
+  
+  // Dynamic difficulty specific states
+  const [isDynamicTest, setIsDynamicTest] = useState(false);
+  const [currentBatch, setCurrentBatch] = useState<CurrentBatch | null>(null);
+  const [loadingNextBatch, setLoadingNextBatch] = useState(false);
+  const [batchCompleted, setBatchCompleted] = useState(false);
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const autoSaveRef = useRef<NodeJS.Timeout | null>(null);
@@ -112,6 +129,23 @@ const TakeScreeningTest: React.FC<TakeScreeningTestProps> = ({ attemptId }) => {
     }
   }, [currentQuestionIndex]);
 
+  // Check if current batch is completed for dynamic difficulty tests
+  useEffect(() => {
+    if (isDynamicTest && testData) {
+      const answeredCount = testData.questions.filter(q => answers[q._id]).length;
+      const totalQuestions = testData.questions.length;
+      const wasCompleted = batchCompleted;
+      const isCompleted = answeredCount === totalQuestions;
+      
+      setBatchCompleted(isCompleted);
+      
+      // Show notification when batch is completed for the first time
+      if (!wasCompleted && isCompleted && answeredCount > 0) {
+        toast.success(`Batch completed! Click "Complete Batch" to proceed to the next set of questions.`);
+      }
+    }
+  }, [answers, isDynamicTest, testData, batchCompleted]);
+
   const fetchTestData = async () => {
     try {
       const data = await apiClient.get<{ success: boolean; data: ScreeningTestInterface }>(`/screening-tests/attempt/${attemptId}`);
@@ -121,6 +155,20 @@ const TakeScreeningTest: React.FC<TakeScreeningTestProps> = ({ attemptId }) => {
         setTestData(attempt);
         setAnswers(attempt.answers || {});
         setFlaggedQuestions(new Set(attempt.flaggedQuestions || []));
+        
+        // Handle dynamic difficulty
+        if (attempt.isDynamicDifficulty) {
+          setIsDynamicTest(true);
+          setCurrentBatch(attempt.currentBatch || null);
+          
+          // For dynamic tests, load current batch answers
+          if (attempt.currentBatch && attempt.currentBatch.answeredQuestions > 0) {
+            // Load batch answers from backend if needed
+            loadCurrentBatchAnswers();
+          }
+        } else {
+          setIsDynamicTest(false);
+        }
         
         // Initialize question start time for the first question
         if (attempt.questions.length > 0) {
@@ -146,6 +194,71 @@ const TakeScreeningTest: React.FC<TakeScreeningTestProps> = ({ attemptId }) => {
       router.push('/dashboard');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCurrentBatchAnswers = async () => {
+    // For now, we'll handle this through the regular answer loading
+    // This function can be expanded later if needed
+  };
+
+  const handleBatchCompletion = async () => {
+    if (!isDynamicTest || !testData) return;
+    
+    // Check if all questions in current batch are answered
+    const currentBatchQuestions = testData.questions;
+    const answeredCount = currentBatchQuestions.filter(q => answers[q._id]).length;
+    
+    if (answeredCount < currentBatchQuestions.length) {
+      toast.error(`Please answer all questions. ${answeredCount}/${currentBatchQuestions.length} completed.`);
+      return;
+    }
+
+    try {
+      setLoadingNextBatch(true);
+      
+      const response = await apiClient.post<{ 
+        success: boolean; 
+        data: { 
+          testCompleted: boolean; 
+          nextBatch?: { 
+            questions: Question[]; 
+            batchInfo: CurrentBatch; 
+          } 
+        } 
+      }>(`/screening-tests/attempt/${attemptId}/dynamic/complete-batch`, {});
+      
+      if (response.success) {
+        const { data } = response;
+        
+        if (data.testCompleted) {
+          toast.success('Test completed successfully!');
+          router.push(`/dashboard/screening-tests/${testData.screeningTest._id}/result/${attemptId}`);
+          return;
+        }
+        
+        if (data.nextBatch) {
+          const nextBatch = data.nextBatch;
+          // Update test data with new batch
+          setTestData(prev => prev ? {
+            ...prev,
+            questions: nextBatch.questions,
+            currentBatch: nextBatch.batchInfo
+          } : null);
+          
+          setCurrentBatch(nextBatch.batchInfo);
+          setAnswers({}); // Clear previous batch answers
+          setCurrentQuestionIndex(0); // Reset to first question of new batch
+          setBatchCompleted(false);
+          
+          toast.success(`Next batch loaded: ${nextBatch.batchInfo.difficulty} ${nextBatch.batchInfo.category} questions`);
+        }
+      }
+    } catch (error) {
+      console.error('Error completing batch:', error);
+      toast.error('Failed to load next batch');
+    } finally {
+      setLoadingNextBatch(false);
     }
   };
 
@@ -439,7 +552,21 @@ const TakeScreeningTest: React.FC<TakeScreeningTestProps> = ({ attemptId }) => {
           <div className="lg:col-span-1">
             <Card className="sticky top-6">
               <CardHeader>
-                <CardTitle className="text-sm">Question Navigator</CardTitle>
+                <CardTitle className="text-sm">
+                  {isDynamicTest ? 'Batch Navigator' : 'Question Navigator'}
+                </CardTitle>
+                
+                {isDynamicTest && currentBatch && (
+                  <div className="mb-2 p-2 bg-blue-50 rounded">
+                    <div className="text-xs font-medium text-blue-900">
+                      Current Batch: {currentBatch.category} - {currentBatch.difficulty}
+                    </div>
+                    <div className="text-xs text-blue-700">
+                      5 questions per batch
+                    </div>
+                  </div>
+                )}
+                
                 <div className="text-xs text-gray-600">
                   Progress: {answeredCount}/{testData.questions.length} answered
                 </div>
@@ -524,35 +651,40 @@ const TakeScreeningTest: React.FC<TakeScreeningTestProps> = ({ attemptId }) => {
                 </div>
 
                 <div className="space-y-3">
-                  {Object.entries(currentQuestion.options).map(([key, value]) => (
-                    <label
-                      key={key}
-                      className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${
-                        answers[currentQuestion._id] === key 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name={currentQuestion._id}
-                        value={key}
-                        checked={answers[currentQuestion._id] === key}
-                        onChange={(e) => handleAnswerSelect(currentQuestion._id, e.target.value)}
-                        className="sr-only"
-                      />
-                      <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 mr-3 ${
-                        answers[currentQuestion._id] === key 
-                          ? 'border-blue-500 bg-blue-500' 
-                          : 'border-gray-300'
-                      }`}>
-                        {answers[currentQuestion._id] === key && (
-                          <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
-                        )}
-                      </div>
-                      <span className="text-gray-900">{key}. {value}</span>
-                    </label>
-                  ))}
+                  {(['A', 'B', 'C', 'D'] as const).map((key) => {
+                    const value = currentQuestion.options[key];
+                    if (!value) return null;
+                    
+                    return (
+                      <label
+                        key={key}
+                        className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${
+                          answers[currentQuestion._id] === key 
+                            ? 'border-blue-500 bg-blue-50' 
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={currentQuestion._id}
+                          value={key}
+                          checked={answers[currentQuestion._id] === key}
+                          onChange={(e) => handleAnswerSelect(currentQuestion._id, e.target.value)}
+                          className="sr-only"
+                        />
+                        <div className={`flex-shrink-0 w-4 h-4 rounded-full border-2 mr-3 ${
+                          answers[currentQuestion._id] === key 
+                            ? 'border-blue-500 bg-blue-500' 
+                            : 'border-gray-300'
+                        }`}>
+                          {answers[currentQuestion._id] === key && (
+                            <div className="w-full h-full rounded-full bg-white transform scale-50"></div>
+                          )}
+                        </div>
+                        <span className="text-gray-900">{key}. {value}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -568,8 +700,31 @@ const TakeScreeningTest: React.FC<TakeScreeningTestProps> = ({ attemptId }) => {
                 Previous
               </Button>
               
-              <div className="text-sm text-gray-600">
-                Question {currentQuestionIndex + 1} of {testData.questions.length}
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-600">
+                  Question {currentQuestionIndex + 1} of {testData.questions.length}
+                </div>
+                
+                {/* Complete Batch Button for Dynamic Difficulty */}
+                {isDynamicTest && batchCompleted && (
+                  <Button
+                    onClick={handleBatchCompletion}
+                    disabled={loadingNextBatch}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {loadingNextBatch ? (
+                      <>
+                        <div className="animate-spin w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Complete Batch
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
 
               <Button

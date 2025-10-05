@@ -67,6 +67,12 @@ interface TestSettings {
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
   preventBackNavigation: boolean;
+  dynamicDifficulty: boolean;
+  dynamicConfig: {
+    questionsPerBatch: number;
+    passThreshold: number;
+    failThreshold: number;
+  };
 }
 
 interface CreateScreeningTestProps {
@@ -97,7 +103,13 @@ const CreateScreeningTest: React.FC<CreateScreeningTestProps> = ({ classroomId, 
     showCorrectAnswers: false,
     shuffleQuestions: true,
     shuffleOptions: true,
-    preventBackNavigation: false
+    preventBackNavigation: false,
+    dynamicDifficulty: false,
+    dynamicConfig: {
+      questionsPerBatch: 5,
+      passThreshold: 4,
+      failThreshold: 2
+    }
   });
 
   // Question selection mode
@@ -673,6 +685,92 @@ const CreateScreeningTest: React.FC<CreateScreeningTestProps> = ({ classroomId, 
                     }))}
                   />
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="dynamicDifficulty">Dynamic Difficulty</Label>
+                    <p className="text-sm text-gray-500">Adjust difficulty based on performance</p>
+                  </div>
+                  <SimpleSwitch
+                    id="dynamicDifficulty"
+                    checked={settings.dynamicDifficulty}
+                    onCheckedChange={(checked: boolean) => setSettings(prev => ({
+                      ...prev,
+                      dynamicDifficulty: checked
+                    }))}
+                  />
+                </div>
+
+                {settings.dynamicDifficulty && (
+                  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="font-medium text-blue-900 mb-3">Dynamic Difficulty Settings</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="questionsPerBatch">Questions per Batch</Label>
+                        <Input
+                          id="questionsPerBatch"
+                          type="number"
+                          min="3"
+                          max="10"
+                          value={settings.dynamicConfig.questionsPerBatch}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            dynamicConfig: {
+                              ...prev.dynamicConfig,
+                              questionsPerBatch: parseInt(e.target.value) || 5
+                            }
+                          }))}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="passThreshold">Pass Threshold</Label>
+                        <Input
+                          id="passThreshold"
+                          type="number"
+                          min="1"
+                          max={settings.dynamicConfig.questionsPerBatch}
+                          value={settings.dynamicConfig.passThreshold}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            dynamicConfig: {
+                              ...prev.dynamicConfig,
+                              passThreshold: parseInt(e.target.value) || 4
+                            }
+                          }))}
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Correct answers to advance</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="failThreshold">Fail Threshold</Label>
+                        <Input
+                          id="failThreshold"
+                          type="number"
+                          min="0"
+                          max={settings.dynamicConfig.questionsPerBatch - 1}
+                          value={settings.dynamicConfig.failThreshold}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            dynamicConfig: {
+                              ...prev.dynamicConfig,
+                              failThreshold: parseInt(e.target.value) || 2
+                            }
+                          }))}
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Correct answers to go back</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 p-3 bg-blue-100 rounded text-sm">
+                      <p className="text-blue-800">
+                        <strong>How it works:</strong> Students start with easy questions. 
+                        With {settings.dynamicConfig.passThreshold}+ correct answers, they advance to medium/hard. 
+                        With {settings.dynamicConfig.failThreshold} or fewer correct, they go back to easier questions.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>

@@ -1037,6 +1037,19 @@ class ApiClient {
       method: 'DELETE'
     })
   }
+
+  // AI Chat endpoint
+  async chatWithAI(attemptId: string, message: string, attachedQuestions: string[] = []) {
+    console.log('API Client sending:', { attemptId, message, attachedQuestions });
+    return this.request('/ai-chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        attemptId,
+        message,
+        attachedQuestions
+      })
+    })
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL)

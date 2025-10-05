@@ -12,7 +12,11 @@ const {
   submitAnswer,
   submitScreeningTest,
   getStudentHistory,
-  getAttemptAnalytics
+  getAttemptAnalytics,
+  getNextDynamicBatch,
+  submitDynamicBatch,
+  getDynamicProgress,
+  completeDynamicBatch
 } = require('../controllers/screeningTestController');
 const { auth, requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
@@ -602,5 +606,48 @@ const calculateComprehensiveAnalytics = async (attempts, testId) => {
     }))
   };
 };
+
+// Dynamic Difficulty Routes
+
+// Get next batch of questions for dynamic difficulty
+router.get(
+  '/attempt/:attemptId/dynamic/next-batch',
+  auth,
+  requireRole('student'),
+  param('attemptId').isMongoId().withMessage('Invalid attempt ID'),
+  validate,
+  getNextDynamicBatch
+);
+
+// Submit current batch and get next difficulty
+router.post(
+  '/attempt/:attemptId/dynamic/submit-batch',
+  auth,
+  requireRole('student'),
+  param('attemptId').isMongoId().withMessage('Invalid attempt ID'),
+  body('answers').isObject().withMessage('Answers must be an object'),
+  validate,
+  submitDynamicBatch
+);
+
+// Get dynamic difficulty progress
+router.get(
+  '/attempt/:attemptId/dynamic/progress',
+  auth,
+  requireRole('student'),
+  param('attemptId').isMongoId().withMessage('Invalid attempt ID'),
+  validate,
+  getDynamicProgress
+);
+
+// Complete current batch and get next batch for dynamic difficulty
+router.post(
+  '/attempt/:attemptId/dynamic/complete-batch',
+  auth,
+  requireRole('student'),
+  param('attemptId').isMongoId().withMessage('Invalid attempt ID'),
+  validate,
+  completeDynamicBatch
+);
 
 module.exports = router;

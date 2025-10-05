@@ -21,6 +21,7 @@ const refresherRoutes = require('./routes/refresherRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const screeningTestRoutes = require('./routes/screeningTestRoutes');
 const questionRoutes = require('./routes/questionRoutes');
+const aiChatRoutes = require('./routes/aiChatSimple');
 
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -71,6 +72,7 @@ app.use('/api/refresher', refresherRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/screening-tests', screeningTestRoutes);
 app.use('/api/questions', questionRoutes);
+app.use('/api/ai-chat', aiChatRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

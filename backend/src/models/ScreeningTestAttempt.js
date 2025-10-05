@@ -185,6 +185,47 @@ const screeningTestAttemptSchema = new mongoose.Schema({
     }
   },
   
+  // Dynamic difficulty tracking
+  dynamicDifficultyProgress: {
+    enabled: { type: Boolean, default: false },
+    currentCategory: { type: String, default: 'quantitative' },
+    currentDifficulty: { type: String, default: 'easy' },
+    currentBatch: { type: Number, default: 1 },
+    usedQuestions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
+    batchHistory: [{
+      category: String,
+      difficulty: String,
+      batchNumber: Number,
+      questions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Question' }],
+      correctAnswers: Number,
+      totalQuestions: Number,
+      completed: { type: Boolean, default: false },
+      nextDifficulty: String,
+      answers: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
+      }
+    }],
+    categoryProgress: {
+      quantitative: {
+        currentDifficulty: { type: String, default: 'easy' },
+        completedDifficulties: [String],
+        highestReached: { type: String, default: 'easy' }
+      },
+      logical: {
+        currentDifficulty: { type: String, default: 'easy' },
+        completedDifficulties: [String],
+        highestReached: { type: String, default: 'easy' }
+      },
+      verbal: {
+        currentDifficulty: { type: String, default: 'easy' },
+        completedDifficulties: [String],
+        highestReached: { type: String, default: 'easy' }
+      }
+    },
+    isComplete: { type: Boolean, default: false }
+  },
+
   // Detailed analytics
   analytics: {
     timeSpentPerQuestion: { type: Number, default: 0 }, // average in seconds
@@ -234,6 +275,12 @@ const screeningTestAttemptSchema = new mongoose.Schema({
       event: String,
       timestamp: Date
     }]
+  },
+  
+  // Temporary field to store first batch answers (workaround for nested object persistence issue)
+  firstBatchAnswers: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   },
   
   createdAt: {

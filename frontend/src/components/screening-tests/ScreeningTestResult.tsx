@@ -18,9 +18,11 @@ import {
   Award, Brain, BookOpen, ArrowLeft, Share, Download, RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import AITestChat from './AITestChat';
 
 interface TestResult {
-  _id: string;
+  _id?: string;
+  attemptId?: string;
   screeningTest: {
     _id: string;
     title: string;
@@ -36,6 +38,9 @@ interface TestResult {
   };
   attemptNumber: number;
   score: number;
+  maxScore?: number;
+  maxPoints?: number;
+  totalPoints?: number;
   percentage: number;
   totalTimeSpent: number;
   correctAnswers: number;
@@ -137,6 +142,11 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
       const data = await apiClient.get<{ success: boolean; data: any }>(`/screening-tests/attempt/${attemptId}/result`);
       
       if (data.success) {
+        console.log('Result data for AI Chat:', {
+          _id: data.data._id,
+          attemptId: data.data.attemptId,
+          availableFields: Object.keys(data.data)
+        });
         setResult(data.data);
       } else {
         toast.error('Failed to fetch results');
@@ -158,6 +168,9 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
   };
 
   const formatPercentage = (value: number) => {
+    if (value === undefined || value === null || isNaN(value)) {
+      return '0.0%';
+    }
     return `${value.toFixed(1)}%`;
   };
 
@@ -266,7 +279,7 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
             {formatPercentage(result.percentage)}
           </h2>
           <p className="text-lg text-gray-600 mb-4">
-            You scored {result.score} out of {result.screeningTest.totalQuestions * 4} points
+            You scored {result.score} out of {result.maxScore || result.maxPoints || result.totalPoints} points
           </p>
           <div className="flex items-center justify-center space-x-6">
             <Badge variant={passed ? 'default' : 'destructive'} className="text-lg px-4 py-2">
@@ -290,7 +303,7 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
             <CardContent>
               <div className="text-2xl font-bold">{formatPercentage(result.percentage)}</div>
               <p className="text-xs text-muted-foreground">
-                {result.score}/{result.screeningTest.totalQuestions * 4} points
+                {result.score}/{result.maxScore || result.maxPoints || result.totalPoints} points
               </p>
             </CardContent>
           </Card>
@@ -343,6 +356,7 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
             <TabsTrigger value="category">Category Analysis</TabsTrigger>
             <TabsTrigger value="questions">Question Review</TabsTrigger>
             <TabsTrigger value="insights">Performance Insights</TabsTrigger>
+            <TabsTrigger value="ai-chat">AI Tutor</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -561,23 +575,23 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <span>First Half</span>
-                      <span className="font-medium">{formatPercentage(result.analytics.accuracyTrends.firstHalf)}</span>
+                      <span className="font-medium">{formatPercentage(result.analytics?.accuracyTrends?.firstHalf || 0)}</span>
                     </div>
-                    <Progress value={result.analytics.accuracyTrends.firstHalf} />
+                    <Progress value={result.analytics?.accuracyTrends?.firstHalf || 0} />
                     
                     <div className="flex justify-between items-center">
                       <span>Second Half</span>
-                      <span className="font-medium">{formatPercentage(result.analytics.accuracyTrends.secondHalf)}</span>
+                      <span className="font-medium">{formatPercentage(result.analytics?.accuracyTrends?.secondHalf || 0)}</span>
                     </div>
-                    <Progress value={result.analytics.accuracyTrends.secondHalf} />
+                    <Progress value={result.analytics?.accuracyTrends?.secondHalf || 0} />
                     
                     <div className="flex justify-between items-center">
                       <span>Improvement</span>
                       <span className={`font-medium ${
-                        result.analytics.accuracyTrends.improvementRate >= 0 ? 'text-green-600' : 'text-red-600'
+                        (result.analytics?.accuracyTrends?.improvementRate || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {result.analytics.accuracyTrends.improvementRate >= 0 ? '+' : ''}
-                        {formatPercentage(result.analytics.accuracyTrends.improvementRate)}
+                        {(result.analytics?.accuracyTrends?.improvementRate || 0) >= 0 ? '+' : ''}
+                        {formatPercentage(result.analytics?.accuracyTrends?.improvementRate || 0)}
                       </span>
                     </div>
                   </div>
@@ -593,17 +607,17 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <span>Avg Time per Question</span>
-                      <span className="font-medium">{formatTime(result.analytics.timeSpentPerQuestion)}</span>
+                      <span className="font-medium">{formatTime(result.analytics?.timeSpentPerQuestion || 0)}</span>
                     </div>
                     
                     <div className="flex justify-between items-center">
                       <span>Questions Revisited</span>
-                      <span className="font-medium">{result.analytics.confidenceMetrics.questionsRevisited}</span>
+                      <span className="font-medium">{result.analytics?.confidenceMetrics?.questionsRevisited || 0}</span>
                     </div>
                     
                     <div className="flex justify-between items-center">
                       <span>Answer Changes</span>
-                      <span className="font-medium">{result.analytics.confidenceMetrics.answerChanges}</span>
+                      <span className="font-medium">{result.analytics?.confidenceMetrics?.answerChanges || 0}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -639,7 +653,7 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
                     </div>
                   )}
 
-                  {result.analytics.accuracyTrends.improvementRate < 0 && (
+                  {(result.analytics?.accuracyTrends?.improvementRate || 0) < 0 && (
                     <div className="flex items-start p-4 bg-blue-50 rounded-lg">
                       <TrendingUp className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
                       <div>
@@ -653,6 +667,24 @@ const ScreeningTestResult: React.FC<ScreeningTestResultProps> = ({ attemptId }) 
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="ai-chat" className="space-y-6">
+            {!loading && (result.attemptId || result._id) ? (
+              <AITestChat 
+                attemptId={result.attemptId || result._id || ''} 
+                questions={result.questionAttempts || []} 
+              />
+            ) : (
+              <div className="flex items-center justify-center p-8">
+                <div className="text-center">
+                  <div className="text-gray-500">Loading AI Chat...</div>
+                  <div className="text-sm text-gray-400 mt-2">
+                    Attempt ID: {result.attemptId || result._id || 'Not available'}
+                  </div>
+                </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 

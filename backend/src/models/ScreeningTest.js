@@ -69,6 +69,24 @@ const screeningTestSchema = new mongoose.Schema({
     preventBackNavigation: {
       type: Boolean,
       default: false
+    },
+    dynamicDifficulty: {
+      type: Boolean,
+      default: false
+    },
+    dynamicConfig: {
+      questionsPerBatch: {
+        type: Number,
+        default: 5
+      },
+      passThreshold: {
+        type: Number,
+        default: 4 // 4 or more correct to advance
+      },
+      failThreshold: {
+        type: Number,
+        default: 2 // 2 or less correct to go back
+      }
     }
   },
   questionDistribution: {
