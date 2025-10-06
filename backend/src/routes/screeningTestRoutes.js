@@ -227,7 +227,16 @@ router.get(
         isCompleted: true
       })
       .populate('student', 'name email')
-      .populate('questionAttempts.question', 'category difficulty')
+      .populate({
+        path: 'screeningTest',
+        select: 'title description questions',
+        populate: {
+          path: 'questions.question',
+          model: 'Question',
+          select: 'question category difficulty correctAnswer options'
+        }
+      })
+      .populate('questionAttempts.question', 'category difficulty question correctAnswer options')
       .sort({ createdAt: -1 });
 
       // Calculate comprehensive analytics
@@ -461,7 +470,7 @@ router.delete(
   }
 );
 
-// Helper function for comprehensive analytics
+// Helper function for comprehensive analytics - uses same logic as getAttemptResult
 const calculateComprehensiveAnalytics = async (attempts, testId) => {
   if (attempts.length === 0) {
     return {
@@ -474,42 +483,15 @@ const calculateComprehensiveAnalytics = async (attempts, testId) => {
     };
   }
 
-  // Summary statistics
-  const summary = {
-    totalAttempts: attempts.length,
-    uniqueStudents: [...new Set(attempts.map(a => a.student._id.toString()))].length,
-    averageScore: attempts.reduce((sum, a) => sum + a.percentage, 0) / attempts.length,
-    averageTimeSpent: attempts.reduce((sum, a) => sum + a.totalTimeSpent, 0) / attempts.length,
-    completionRate: 100, // All attempts in this query are completed
-    highestScore: Math.max(...attempts.map(a => a.percentage)),
-    lowestScore: Math.min(...attempts.map(a => a.percentage))
-  };
-
-  // Performance distribution
-  const performanceDistribution = {
-    excellent: { count: 0, percentage: 0 }, // 90-100%
-    good: { count: 0, percentage: 0 },      // 70-89%
-    average: { count: 0, percentage: 0 },   // 50-69%
-    poor: { count: 0, percentage: 0 }       // 0-49%
-  };
-
-  attempts.forEach(attempt => {
-    if (attempt.percentage >= 90) performanceDistribution.excellent.count++;
-    else if (attempt.percentage >= 70) performanceDistribution.good.count++;
-    else if (attempt.percentage >= 50) performanceDistribution.average.count++;
-    else performanceDistribution.poor.count++;
-  });
-
-  Object.keys(performanceDistribution).forEach(key => {
-    performanceDistribution[key].percentage = 
-      (performanceDistribution[key].count / attempts.length) * 100;
-  });
-
-  // Question-level analysis
-  const questionAnalysis = {};
+  const Question = require('../models/Question');
   const ScreeningTest = require('../models/ScreeningTest');
   const test = await ScreeningTest.findById(testId).populate('questions.question');
+
+  // Process each attempt to calculate real analytics like getAttemptResult does
+  const processedAttempts = [];
+  const questionAnalysis = {};
   
+  // Initialize question analysis from test questions
   test.questions.forEach(q => {
     questionAnalysis[q.question._id] = {
       question: q.question.question,
@@ -522,18 +504,170 @@ const calculateComprehensiveAnalytics = async (attempts, testId) => {
     };
   });
 
-  attempts.forEach(attempt => {
-    attempt.questionAttempts.forEach(qa => {
-      const qId = qa.question._id.toString();
-      if (questionAnalysis[qId]) {
-        questionAnalysis[qId].totalAttempts++;
-        questionAnalysis[qId].averageTime += qa.timeSpent;
-        if (qa.isCorrect) {
-          questionAnalysis[qId].correctAnswers++;
+  for (const attempt of attempts) {
+    // Check if this is a dynamic difficulty test
+    const isDynamicTest = attempt.dynamicDifficultyProgress && attempt.dynamicDifficultyProgress.enabled;
+    
+    let correctAnswers = 0;
+    let totalQuestions = 0;
+    let totalScore = 0;
+    let maxScore = 0;
+    let totalTimeSpent = 0;
+    let questionResults = [];
+
+    if (isDynamicTest) {
+      // Handle dynamic difficulty test - same logic as getAttemptResult
+      const batchHistory = attempt.dynamicDifficultyProgress.batchHistory;
+      const allQuestionIds = [];
+      const allPresentedQuestionIds = [];
+      
+      // Collect all questions that were presented in batches
+      batchHistory.forEach(batch => {
+        if (batch.questions && Array.isArray(batch.questions)) {
+          batch.questions.forEach(questionId => {
+            allPresentedQuestionIds.push(questionId);
+          });
+        }
+      });
+      
+      // Check for first batch answers in dedicated field
+      if (attempt.firstBatchAnswers) {
+        Object.keys(attempt.firstBatchAnswers).forEach(questionId => {
+          allQuestionIds.push(questionId);
+        });
+      }
+      
+      // Collect all question IDs from regular batches (excluding first batch)
+      batchHistory.forEach((batch, index) => {
+        if (index > 0 && batch.answers) {
+          const answersObj = batch.answers || {};
+          Object.keys(answersObj).forEach(questionId => {
+            allQuestionIds.push(questionId);
+          });
+        }
+      });
+
+      totalQuestions = allPresentedQuestionIds.length;
+      
+      // Get all questions that were attempted
+      const attemptedQuestions = await Question.find({ _id: { $in: allQuestionIds } });
+      
+      // Process first batch answers from dedicated field
+      if (attempt.firstBatchAnswers) {
+        for (const [questionId, answerData] of Object.entries(attempt.firstBatchAnswers)) {
+          const question = attemptedQuestions.find(q => q._id.toString() === questionId);
+          if (question) {
+            if (answerData.isCorrect) {
+              correctAnswers++;
+              totalScore += 1;
+            }
+            maxScore += 1;
+            totalTimeSpent += answerData.timeSpent || 0;
+
+            // Update question analysis
+            if (questionAnalysis[questionId]) {
+              questionAnalysis[questionId].totalAttempts++;
+              questionAnalysis[questionId].averageTime += answerData.timeSpent || 0;
+              if (answerData.isCorrect) {
+                questionAnalysis[questionId].correctAnswers++;
+              }
+            }
+
+            questionResults.push({
+              questionId: question._id,
+              question: question.question,
+              userAnswer: answerData.selectedAnswer,
+              isCorrect: answerData.isCorrect,
+              points: answerData.isCorrect ? 1 : 0,
+              maxPoints: 1,
+              category: question.category,
+              difficulty: question.difficulty,
+              timeSpent: answerData.timeSpent || 0
+            });
+          }
         }
       }
+      
+      // Process regular batch answers (excluding first batch)
+      for (let i = 1; i < batchHistory.length; i++) {
+        const batch = batchHistory[i];
+        if (batch.answers) {
+          const answersObj = batch.answers || {};
+          
+          for (const [questionId, answerData] of Object.entries(answersObj)) {
+            const question = attemptedQuestions.find(q => q._id.toString() === questionId);
+            if (question) {
+              if (answerData.isCorrect) {
+                correctAnswers++;
+                totalScore += 1;
+              }
+              maxScore += 1;
+              totalTimeSpent += answerData.timeSpent || 0;
+
+              // Update question analysis
+              if (questionAnalysis[questionId]) {
+                questionAnalysis[questionId].totalAttempts++;
+                questionAnalysis[questionId].averageTime += answerData.timeSpent || 0;
+                if (answerData.isCorrect) {
+                  questionAnalysis[questionId].correctAnswers++;
+                }
+              }
+
+              questionResults.push({
+                questionId: question._id,
+                question: question.question,
+                userAnswer: answerData.selectedAnswer,
+                isCorrect: answerData.isCorrect,
+                points: answerData.isCorrect ? 1 : 0,
+                maxPoints: 1,
+                category: question.category,
+                difficulty: question.difficulty,
+                timeSpent: answerData.timeSpent || 0
+              });
+            }
+          }
+        }
+      }
+    } else {
+      // Handle regular test - same logic as getAttemptResult
+      totalQuestions = attempt.screeningTest ? attempt.screeningTest.questions.length : test.questions.length;
+      totalTimeSpent = attempt.totalTimeSpent || 0;
+      
+      if (attempt.questionAttempts && attempt.questionAttempts.length > 0) {
+        attempt.questionAttempts.forEach(qa => {
+          const questionId = qa.question._id.toString();
+          
+          if (qa.isCorrect) {
+            correctAnswers++;
+            totalScore += qa.pointsEarned || 1;
+          }
+          maxScore += qa.maxPoints || 1;
+
+          // Update question analysis
+          if (questionAnalysis[questionId]) {
+            questionAnalysis[questionId].totalAttempts++;
+            questionAnalysis[questionId].averageTime += qa.timeSpent || 0;
+            if (qa.isCorrect) {
+              questionAnalysis[questionId].correctAnswers++;
+            }
+          }
+        });
+      }
+    }
+
+    const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
+
+    processedAttempts.push({
+      student: attempt.student,
+      score: totalScore,
+      percentage: percentage,
+      timeSpent: totalTimeSpent,
+      createdAt: attempt.createdAt,
+      correctAnswers,
+      totalQuestions,
+      questionResults
     });
-  });
+  }
 
   // Calculate final question statistics
   Object.keys(questionAnalysis).forEach(qId => {
@@ -544,7 +678,38 @@ const calculateComprehensiveAnalytics = async (attempts, testId) => {
     }
   });
 
-  // Time-based analytics
+  // Summary statistics using processed data
+  const summary = {
+    totalAttempts: processedAttempts.length,
+    uniqueStudents: [...new Set(processedAttempts.map(a => a.student._id.toString()))].length,
+    averageScore: processedAttempts.length > 0 ? processedAttempts.reduce((sum, a) => sum + a.percentage, 0) / processedAttempts.length : 0,
+    averageTimeSpent: processedAttempts.length > 0 ? processedAttempts.reduce((sum, a) => sum + a.timeSpent, 0) / processedAttempts.length : 0,
+    completionRate: 100, // All attempts in this query are completed
+    highestScore: processedAttempts.length > 0 ? Math.max(...processedAttempts.map(a => a.percentage)) : 0,
+    lowestScore: processedAttempts.length > 0 ? Math.min(...processedAttempts.map(a => a.percentage)) : 0
+  };
+
+  // Performance distribution using processed data
+  const performanceDistribution = {
+    excellent: { count: 0, percentage: 0 }, // 90-100%
+    good: { count: 0, percentage: 0 },      // 70-89%
+    average: { count: 0, percentage: 0 },   // 50-69%
+    poor: { count: 0, percentage: 0 }       // 0-49%
+  };
+
+  processedAttempts.forEach(attempt => {
+    if (attempt.percentage >= 90) performanceDistribution.excellent.count++;
+    else if (attempt.percentage >= 70) performanceDistribution.good.count++;
+    else if (attempt.percentage >= 50) performanceDistribution.average.count++;
+    else performanceDistribution.poor.count++;
+  });
+
+  Object.keys(performanceDistribution).forEach(key => {
+    performanceDistribution[key].percentage = 
+      processedAttempts.length > 0 ? (performanceDistribution[key].count / processedAttempts.length) * 100 : 0;
+  });
+
+  // Time-based analytics - calculate from actual question results
   const timeAnalytics = {
     averageTimePerCategory: {
       quantitative: 0,
@@ -558,26 +723,34 @@ const calculateComprehensiveAnalytics = async (attempts, testId) => {
     }
   };
 
-  // Calculate category and difficulty averages
+  // Map database category names to analytics keys
+  const categoryMapping = {
+    'Quantitative Aptitude': 'quantitative',
+    'Logical Reasoning and Data Interpretation': 'logical', 
+    'Verbal Ability and Reading Comprehension': 'verbal'
+  };
+
   const categoryTotals = { quantitative: { time: 0, count: 0 }, logical: { time: 0, count: 0 }, verbal: { time: 0, count: 0 } };
   const difficultyTotals = { easy: { time: 0, count: 0 }, medium: { time: 0, count: 0 }, hard: { time: 0, count: 0 } };
 
-  attempts.forEach(attempt => {
-    ['quantitative', 'logical', 'verbal'].forEach(category => {
-      const perf = attempt.categoryPerformance[category];
-      if (perf.total > 0) {
-        categoryTotals[category].time += perf.averageTime * perf.total;
-        categoryTotals[category].count += perf.total;
-      }
-    });
+  processedAttempts.forEach(attempt => {
+    if (attempt.questionResults) {
+      attempt.questionResults.forEach(qr => {
+        // Map the full category name to the short key
+        const categoryKey = categoryMapping[qr.category] || qr.category?.toLowerCase();
+        const difficulty = qr.difficulty?.toLowerCase();
 
-    ['easy', 'medium', 'hard'].forEach(difficulty => {
-      const perf = attempt.difficultyPerformance[difficulty];
-      if (perf.total > 0) {
-        difficultyTotals[difficulty].time += perf.averageTime * perf.total;
-        difficultyTotals[difficulty].count += perf.total;
-      }
-    });
+        if (categoryKey && categoryTotals[categoryKey]) {
+          categoryTotals[categoryKey].time += qr.timeSpent || 0;
+          categoryTotals[categoryKey].count++;
+        }
+
+        if (difficulty && difficultyTotals[difficulty]) {
+          difficultyTotals[difficulty].time += qr.timeSpent || 0;
+          difficultyTotals[difficulty].count++;
+        }
+      });
+    }
   });
 
   Object.keys(categoryTotals).forEach(category => {
@@ -597,11 +770,11 @@ const calculateComprehensiveAnalytics = async (attempts, testId) => {
     performanceDistribution,
     questionAnalysis: Object.values(questionAnalysis),
     timeAnalytics,
-    recentAttempts: attempts.slice(0, 10).map(a => ({
+    recentAttempts: processedAttempts.slice(0, 10).map(a => ({
       student: a.student,
       score: a.score,
       percentage: a.percentage,
-      timeSpent: a.totalTimeSpent,
+      timeSpent: a.timeSpent,
       createdAt: a.createdAt
     }))
   };
