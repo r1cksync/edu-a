@@ -8,7 +8,8 @@
 
 A modern, AI-powered educational platform designed to replace Google Classroom with advanced features including real-time student engagement monitoring, interactive quizzes, comprehensive attendance tracking, and seamless video class management.
 
-Videos : https://www.youtube.com/watch?v=44cze2HiUXg, https://drive.google.com/file/d/1EzHMsx9InIu8ZmWBII7oHxwfDYVXQJLA/view?usp=drivesdk
+Videos : https://www.youtube.com/watch?v=44cze2HiUXg, 
+         https://drive.google.com/file/d/1EzHMsx9InIu8ZmWBII7oHxwfDYVXQJLA/view?usp=drivesdk
 
 ## 🌟 Key Features
 
