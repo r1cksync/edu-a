@@ -429,7 +429,6 @@ npm run test:e2e          # Run end-to-end tests
 
 For support and questions:
 - Create an issue on GitHub
-- Contact: [your-email@domain.com]
 - Documentation: See individual service README files
 
 ## 📄 License
