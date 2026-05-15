@@ -1,0 +1,64 @@
+# --- dependencies ---
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# --- env / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+
+# --- logs ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+logs/
+
+# --- builds / caches ---
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+.turbo/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# --- Expo / React Native ---
+.expo/
+.expo-shared/
+web-build/
+android/app/build/
+ios/build/
+ios/Pods/
+ios/DerivedData/
+*.jks
+*.keystore
+*.apk
+*.aab
+*.ipa
+expo-env.d.ts
+
+# --- Detox / e2e artifacts ---
+e2e/artifacts/
+
+# --- editors / OS ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- uploaded / generated runtime data ---
+uploads/
+tmp/
+temp/
